@@ -158,7 +158,12 @@ export const ASTON_WEBB = {
     },
     turret: {
       size: 5.2,
-      height: 22, // total incl. dome, from ground
+      // Total incl. dome, from ground. Tall enough that the shaft clears
+      // the main block's parapet/balustrade (~wallHeight + 2) before its
+      // own dome starts — otherwise the "twin domed turrets" the real
+      // building is known for read as barely poking above the roofline
+      // rather than flanking towers in their own right.
+      height: 27,
       domeRadius: 3.1,
     },
     dome: {

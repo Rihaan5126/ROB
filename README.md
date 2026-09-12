@@ -20,6 +20,15 @@ every texture is generated procedurally on a `<canvas>` at startup, and
 every building is either bespoke-modelled (Old Joe, Aston Webb) or
 generated from real footprint data (everything else).
 
+## Screenshots
+
+| | |
+|---|---|
+| ![Campus overview](docs/screenshots/overview.jpg) | ![Aston Webb / Great Hall, front elevation](docs/screenshots/aston-webb.jpg) |
+| Chancellor's Court, overhead | Aston Webb / Great Hall — twin domed turrets, the great arched window, columned entrance |
+| ![Old Joe, front elevation](docs/screenshots/old-joe.jpg) | ![Muirhead Tower and surrounding academic buildings](docs/screenshots/muirhead-tower.jpg) |
+| Old Joe — Joseph Chamberlain Memorial Clock Tower | Muirhead Tower and its neighbours, real footprints and facades |
+
 ## Running it
 
 ```bash

@@ -10,6 +10,7 @@
 
 export class HeaderBar {
   private readonly root: HTMLDivElement;
+  private readonly attribution: HTMLDivElement;
 
   constructor(container: HTMLElement) {
     this.root = document.createElement("div");
@@ -55,15 +56,36 @@ export class HeaderBar {
     this.root.appendChild(subtitle);
 
     container.appendChild(this.root);
+
+    // Real building positions/footprints for the wider campus come from
+    // OpenStreetMap (ODbL) — a small, unobtrusive credit line, but a
+    // required one, and it quietly signals the data is real rather than
+    // invented.
+    this.attribution = document.createElement("div");
+    this.attribution.innerHTML =
+      'Building data © <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener noreferrer" style="color: inherit; text-decoration: underline; pointer-events: auto;">OpenStreetMap</a> contributors';
+    this.attribution.style.cssText = `
+      position: absolute; right: 14px; bottom: 10px;
+      opacity: 0;
+      transition: opacity 0.8s cubic-bezier(.2,.8,.3,1);
+      pointer-events: none;
+      z-index: 12;
+      font: 400 10.5px/1.4 -apple-system, "Segoe UI", Arial, sans-serif;
+      color: #55555c;
+      text-shadow: 0 1px 8px rgba(255,255,255,0.85), 0 1px 2px rgba(255,255,255,0.85);
+    `;
+    container.appendChild(this.attribution);
   }
 
   show(): void {
     this.root.style.opacity = "1";
     this.root.style.transform = "translateY(0)";
+    this.attribution.style.opacity = "1";
   }
 
   hide(): void {
     this.root.style.opacity = "0";
     this.root.style.transform = "translateY(-6px)";
+    this.attribution.style.opacity = "0";
   }
 }

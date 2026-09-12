@@ -81,9 +81,13 @@ function buildCentralBlock(): THREE.Group {
   mainWall.position.z = 0;
   group.add(mainWall);
 
-  // Stone plinth course at the base for visual weight.
-  const plinth = createBrickWall(cb.width + 0.6, 1.1, cb.depth + 0.6, Materials.stoneAshlar);
-  plinth.position.set(0, 0, 0);
+  // Stone plinth course at the base for visual weight. createBrickWall
+  // pre-centres its mesh on its own height (base at local y=0), so
+  // leaving y at 0 here — instead of half the plinth's own height —
+  // sinks half of it below grade.
+  const plinthHeight = 1.1;
+  const plinth = createBrickWall(cb.width + 0.6, plinthHeight, cb.depth + 0.6, Materials.stoneAshlar);
+  plinth.position.set(0, plinthHeight / 2, 0);
   group.add(plinth);
 
   // Terracotta stringcourse at first-floor level — the buff dressing band
@@ -139,11 +143,16 @@ function buildCentralBlock(): THREE.Group {
   cornice.position.y = cb.wallHeight;
   group.add(cornice);
 
-  // Low parapet upstand hiding the flat roof deck.
-  const parapet = createBrickWall(cb.width - 1, 1.4, cb.depth - 1, Materials.brickWarm);
-  parapet.position.y = cb.wallHeight + 0.3;
+  // Low parapet upstand hiding the flat roof deck. Its base — not its
+  // centre — belongs at wallHeight + 0.3 (just above the cornice), so the
+  // override has to add back the half-height createBrickWall already
+  // baked into position.y.
+  const parapetHeight = 1.4;
+  const parapetBaseY = cb.wallHeight + 0.3;
+  const parapet = createBrickWall(cb.width - 1, parapetHeight, cb.depth - 1, Materials.brickWarm);
+  parapet.position.y = parapetBaseY + parapetHeight / 2;
   group.add(parapet);
-  addBalustrade(group, cb.width - 1, cb.depth - 1, cb.wallHeight + 1.0);
+  addBalustrade(group, cb.width - 1, cb.depth - 1, parapetBaseY + parapetHeight + 0.3);
 
   // Corner turrets.
   const turretShaftHeight = cb.turret.height - cb.turret.domeRadius * 2.2;
@@ -199,22 +208,43 @@ function buildWing(side: 1 | -1): THREE.Group {
   const end = { x: side * 60, z: frontZ - 66 };
 
   const segLen = 1 / w.bayCount;
-  const bayLength =
-    (Math.hypot(control.x - start.x, control.z - start.z) +
-      Math.hypot(end.x - control.x, end.z - control.z)) /
-    w.bayCount;
 
+  // Sample every bay centre up front. A single average bay width (chord
+  // length / count) looks right only where the curve's speed is roughly
+  // constant — but a quadratic bezier speeds up and slows down along its
+  // length, so bay *centres* sampled at even parameter steps end up
+  // unevenly spaced in actual world distance. Using that same average
+  // width for every bay then either overlapped (bunched, faster part of
+  // the curve) or gapped (visible daylight between bays, slower part) —
+  // this was the cause of the disconnected-looking wing. Instead, size
+  // each bay from its own actual distance to its neighbours.
+  const centres: { x: number; z: number; t: number }[] = [];
   for (let i = 0; i < w.bayCount; i++) {
     const t = (i + 0.5) * segLen;
-    const p = bezier2D(start, control, end, t);
-    const tPrev = bezier2D(start, control, end, Math.max(0, t - 0.01));
-    const tNext = bezier2D(start, control, end, Math.min(1, t + 0.01));
+    centres.push({ ...bezier2D(start, control, end, t), t });
+  }
+
+  for (let i = 0; i < w.bayCount; i++) {
+    const p = centres[i];
+    const tPrev = bezier2D(start, control, end, Math.max(0, p.t - 0.01));
+    const tNext = bezier2D(start, control, end, Math.min(1, p.t + 0.01));
     const dirX = tNext.x - tPrev.x;
     const dirZ = tNext.z - tPrev.z;
     const angle = Math.atan2(dirX, dirZ);
 
-    const bay = createBrickWall(bayLength * 1.08, w.wallHeight, w.depth, Materials.brickWarm);
-    bay.position.set(p.x, 0, p.z);
+    const distPrev = i > 0 ? Math.hypot(p.x - centres[i - 1].x, p.z - centres[i - 1].z) : undefined;
+    const distNext =
+      i < centres.length - 1 ? Math.hypot(p.x - centres[i + 1].x, p.z - centres[i + 1].z) : undefined;
+    const neighbourDist = distPrev !== undefined && distNext !== undefined
+      ? (distPrev + distNext) / 2
+      : (distPrev ?? distNext ?? 6);
+    // A slight overlap (not just a touching edge) so adjacent bays keep
+    // sealing together even where the curve's local speed estimate is a
+    // touch off.
+    const bayLength = neighbourDist * 1.12;
+
+    const bay = createBrickWall(bayLength, w.wallHeight, w.depth, Materials.brickWarm);
+    bay.position.set(p.x, w.wallHeight / 2, p.z);
     bay.rotation.y = angle;
     group.add(bay);
 
@@ -275,10 +305,13 @@ function buildWing(side: 1 | -1): THREE.Group {
     }
   }
 
-  // Domed pavilion terminating the wing.
+  // Domed pavilion terminating the wing. createBrickWall's mesh is
+  // pre-centred on its own height (base at local y=0), so its base sits
+  // at ground level only once that half-height is added back in.
   const pav = w.pavilion;
-  const pavShell = createBrickWall(pav.size, pav.height * 0.75, pav.size, Materials.brickWarm);
-  pavShell.position.set(end.x, 0, end.z);
+  const pavShellHeight = pav.height * 0.75;
+  const pavShell = createBrickWall(pav.size, pavShellHeight, pav.size, Materials.brickWarm);
+  pavShell.position.set(end.x, pavShellHeight / 2, end.z);
   group.add(pavShell);
 
   const pavCornice = createCornice(pav.size + 0.6, pav.size + 0.6, 0.4, Materials.stoneDarleyDale);

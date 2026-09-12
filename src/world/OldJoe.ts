@@ -144,15 +144,19 @@ function buildShaftStage(yBase: number): THREE.Group {
 
     for (let b = 1; b < bayCount; b++) {
       const offset = -faceWidth / 2 + b * bayWidth;
+      const pilasterHeight = height * 0.94;
       const pilaster = createBrickWall(
         pilasterWidth,
-        height * 0.94,
+        pilasterHeight,
         0.25,
         Materials.brickRedFine
       );
+      // createBrickWall pre-centres its mesh on its own height (base at
+      // local y=0), so its base — not its centre — is what should land at
+      // yBase + height * 0.03.
       pilaster.position.set(
         face.x !== 0 ? 0 : offset,
-        yBase + height * 0.03,
+        yBase + height * 0.03 + pilasterHeight / 2,
         face.x !== 0 ? offset : 0
       );
       if (face.x !== 0) {
@@ -197,8 +201,14 @@ function buildClockStage(yBase: number): { group: THREE.Group; hands: ClockHandR
   const { height, width, clockDiameter } = OLD_JOE.clockStage;
   const hands: ClockHandRefs[] = [];
 
+  // createBrickWall's own local origin already sits at the wall's base
+  // (its mesh is pre-centred at y = height / 2), so placing that base at
+  // yBase means adding height / 2 on top — setting position.y = yBase
+  // directly (as this used to) instead re-centres the whole box on yBase,
+  // pulling its top 5m short of the bell stage above and punching a
+  // matching gap in the shaft below.
   const box = createBrickWall(width, height, width, Materials.brickRed);
-  box.position.y = yBase;
+  box.position.y = yBase + height / 2;
   group.add(box);
 
   const stoneBand = createCornice(width * 1.06, width * 1.06, 0.5, Materials.stoneDarleyDale);
@@ -337,13 +347,17 @@ export function createOldJoe(): OldJoeResult {
   const parapet = createCornice(parapetWidth, parapetWidth, 0.6, Materials.stoneDarleyDale);
   parapet.position.y = y + 0.3;
   group.add(parapet);
+  const parapetWallHeight = OLD_JOE.parapetStage.height - 0.6;
   const parapetWall = createBrickWall(
     parapetWidth * 0.9,
-    OLD_JOE.parapetStage.height - 0.6,
+    parapetWallHeight,
     parapetWidth * 0.9,
     Materials.stoneAshlar
   );
-  parapetWall.position.y = y + 0.6;
+  // See the clock-stage box above: createBrickWall pre-centres its mesh on
+  // its own height, so the wall's base (not its centre) is what we want
+  // sitting at y + 0.6.
+  parapetWall.position.y = y + 0.6 + parapetWallHeight / 2;
   group.add(parapetWall);
   y += OLD_JOE.parapetStage.height;
 
