@@ -8,7 +8,8 @@
 // ============================================================================
 
 import * as THREE from "three";
-import { TERRAIN, PATHS, PAVING, OLD_JOE, ASTON_WEBB, type PathSegment } from "./campusData";
+import { mergeGeometries } from "three/addons/utils/BufferGeometryUtils.js";
+import { TERRAIN, ALL_PATHS, PAVING, OLD_JOE, ASTON_WEBB, type PathSegment } from "./campusData";
 import { Materials } from "../materials/materials";
 
 function noise2D(x: number, z: number, seed: number): number {
@@ -41,9 +42,7 @@ export class Terrain {
 
   constructor() {
     this.group.add(this.buildGround());
-    for (const path of PATHS) {
-      this.group.add(this.buildPathMesh(path));
-    }
+    this.group.add(this.buildAllPaths());
     this.group.add(this.buildRadialPaving(OLD_JOE.position.x, OLD_JOE.position.z, PAVING.oldJoeRadius));
     this.group.add(this.buildForecourtPaving());
   }
@@ -68,7 +67,18 @@ export class Terrain {
     return mesh;
   }
 
-  private buildPathMesh(path: PathSegment): THREE.Mesh {
+  /** All ~440 real + hand-tuned path segments merged into one static mesh
+   * — a separate draw call per segment would be wasteful when none of
+   * them ever move or need independent picking. */
+  private buildAllPaths(): THREE.Mesh {
+    const geometries = ALL_PATHS.map((path) => this.buildPathGeometry(path));
+    const merged = mergeGeometries(geometries);
+    const mesh = new THREE.Mesh(merged, Materials.paving);
+    mesh.receiveShadow = true;
+    return mesh;
+  }
+
+  private buildPathGeometry(path: PathSegment): THREE.BufferGeometry {
     const pts = path.points.map((p) => new THREE.Vector2(p.x, p.z));
     const curve = new THREE.SplineCurve(pts);
     const sampleCount = Math.max(10, pts.length * 12);
@@ -111,10 +121,7 @@ export class Terrain {
     geo.setAttribute("uv", new THREE.Float32BufferAttribute(uvs, 2));
     geo.setIndex(indices);
     geo.computeVertexNormals();
-
-    const mesh = new THREE.Mesh(geo, Materials.paving);
-    mesh.receiveShadow = true;
-    return mesh;
+    return geo;
   }
 
   private buildRadialPaving(cx: number, cz: number, radius: number): THREE.Mesh {

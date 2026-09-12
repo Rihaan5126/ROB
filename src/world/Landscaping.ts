@@ -11,7 +11,7 @@
 import * as THREE from "three";
 import { mergeGeometries } from "three/addons/utils/BufferGeometryUtils.js";
 import { Materials } from "../materials/materials";
-import { TREES, LAMP_POSTS, PATHS, type PathSegment } from "./campusData";
+import { TREES, LAMP_POSTS, ALL_PATHS, type PathSegment } from "./campusData";
 import { BUILDINGS } from "./buildings";
 
 function mulberry32(seed: number) {
@@ -25,27 +25,63 @@ function mulberry32(seed: number) {
   };
 }
 
-function buildTrunkGeometry(): THREE.BufferGeometry {
-  const trunk = new THREE.CylinderGeometry(0.14, 0.32, 4.4, 8);
-  trunk.translate(0, 2.2, 0);
-
-  const branchA = new THREE.CylinderGeometry(0.05, 0.11, 2.0, 6);
-  branchA.rotateZ(Math.PI / 3.4);
-  branchA.translate(0.7, 3.7, 0.15);
-
-  const branchB = new THREE.CylinderGeometry(0.05, 0.1, 1.7, 6);
-  branchB.rotateZ(-Math.PI / 2.7);
-  branchB.rotateY(1.4);
-  branchB.translate(-0.6, 3.95, -0.35);
-
-  return mergeGeometries([trunk, branchA, branchB]);
+/** Bakes a top-lit colour gradient onto a canopy geometry — dark/cool at
+ * the shaded base rising to light/warm at the sunlit crown — so
+ * per-instance tinting has real shading to multiply against instead of a
+ * flat blob of colour. Shared across every tree species. */
+function colorizeCanopyByHeight(
+  geo: THREE.BufferGeometry,
+  darkHex: string,
+  lightHex: string,
+  gamma = 1.4
+): THREE.BufferGeometry {
+  const pos = geo.attributes.position;
+  let minY = Infinity;
+  let maxY = -Infinity;
+  for (let i = 0; i < pos.count; i++) {
+    const y = pos.getY(i);
+    if (y < minY) minY = y;
+    if (y > maxY) maxY = y;
+  }
+  const range = Math.max(0.001, maxY - minY);
+  const dark = new THREE.Color(darkHex);
+  const light = new THREE.Color(lightHex);
+  const colors = new Float32Array(pos.count * 3);
+  const tmp = new THREE.Color();
+  for (let i = 0; i < pos.count; i++) {
+    const t = Math.pow((pos.getY(i) - minY) / range, gamma);
+    tmp.copy(dark).lerp(light, t);
+    colors[i * 3] = tmp.r;
+    colors[i * 3 + 1] = tmp.g;
+    colors[i * 3 + 2] = tmp.b;
+  }
+  geo.setAttribute("color", new THREE.BufferAttribute(colors, 3));
+  return geo;
 }
 
-/** Irregular multi-lobe canopy with a baked top-lit colour gradient (dark,
- * cool at the shaded base rising to a lighter, warmer sunlit crown) so
- * per-instance tinting has real shading to multiply against instead of a
- * flat blob of green. */
-function buildCanopyGeometry(): THREE.BufferGeometry {
+function buildTrunkGeometry(height: number, leanBranches: boolean): THREE.BufferGeometry {
+  const trunk = new THREE.CylinderGeometry(0.11 + height * 0.006, 0.22 + height * 0.018, height, 8);
+  trunk.translate(0, height / 2, 0);
+  const parts: THREE.BufferGeometry[] = [trunk];
+
+  if (leanBranches) {
+    const branchA = new THREE.CylinderGeometry(0.05, 0.11, height * 0.45, 6);
+    branchA.rotateZ(Math.PI / 3.4);
+    branchA.translate(0.7, height * 0.84, 0.15);
+    const branchB = new THREE.CylinderGeometry(0.05, 0.1, height * 0.39, 6);
+    branchB.rotateZ(-Math.PI / 2.7);
+    branchB.rotateY(1.4);
+    branchB.translate(-0.6, height * 0.9, -0.35);
+    parts.push(branchA, branchB);
+  }
+
+  return mergeGeometries(parts);
+}
+
+/** Irregular multi-lobe rounded broadleaf canopy — the general "park
+ * tree" silhouette, the current default made into one species among
+ * several. */
+function buildRoundedCanopy(): THREE.BufferGeometry {
   const lobes: [number, number, number, number][] = [
     [0, 4.8, 0, 2.5],
     [1.3, 4.0, 0.7, 1.8],
@@ -61,31 +97,75 @@ function buildCanopyGeometry(): THREE.BufferGeometry {
     g.translate(x, y, z);
     return g;
   });
-  const geo = mergeGeometries(parts);
+  return colorizeCanopyByHeight(mergeGeometries(parts), "#2f5024", "#84a855");
+}
 
-  const pos = geo.attributes.position;
-  let minY = Infinity;
-  let maxY = -Infinity;
-  for (let i = 0; i < pos.count; i++) {
-    const y = pos.getY(i);
-    if (y < minY) minY = y;
-    if (y > maxY) maxY = y;
-  }
-  const range = Math.max(0.001, maxY - minY);
-  const dark = new THREE.Color("#2f5024");
-  const light = new THREE.Color("#84a855");
-  const colors = new Float32Array(pos.count * 3);
-  const tmp = new THREE.Color();
-  for (let i = 0; i < pos.count; i++) {
-    const t = Math.pow((pos.getY(i) - minY) / range, 1.4);
-    tmp.copy(dark).lerp(light, t);
-    colors[i * 3] = tmp.r;
-    colors[i * 3 + 1] = tmp.g;
-    colors[i * 3 + 2] = tmp.b;
-  }
-  geo.setAttribute("color", new THREE.BufferAttribute(colors, 3));
+/** Tall, narrow, columnar canopy (poplar/conifer-like) — stacked
+ * tapering lobes rather than one wide blob, reading as a distinctly
+ * different silhouette from across the lawn, not just a recoloured
+ * clone. */
+function buildConicalCanopy(): THREE.BufferGeometry {
+  const lobes: [number, number, number, number][] = [
+    [0, 3.6, 0, 1.9],
+    [0.3, 5.0, -0.2, 1.7],
+    [-0.25, 6.2, 0.2, 1.45],
+    [0.2, 7.3, -0.15, 1.15],
+    [-0.1, 8.2, 0.1, 0.8],
+    [0, 8.9, 0, 0.45],
+  ];
+  const parts = lobes.map(([x, y, z, r]) => {
+    const g = new THREE.IcosahedronGeometry(r, 1);
+    g.scale(1, 1.25, 1);
+    g.translate(x, y, z);
+    return g;
+  });
+  return colorizeCanopyByHeight(mergeGeometries(parts), "#233d1f", "#5f8a4a", 1.1);
+}
 
-  return geo;
+/** Wide, flat spreading canopy (oak/plane-like) — lower and broader than
+ * the rounded species, dominated by horizontal spread rather than
+ * height. */
+function buildSpreadingCanopy(): THREE.BufferGeometry {
+  const lobes: [number, number, number, number][] = [
+    [0, 3.6, 0, 2.6],
+    [2.1, 3.3, 1.0, 2.0],
+    [-2.0, 3.4, -0.8, 2.1],
+    [1.1, 4.3, -1.9, 1.9],
+    [-1.3, 4.1, 1.9, 1.8],
+    [2.3, 3.0, -1.2, 1.5],
+    [0.3, 4.8, 0.4, 1.6],
+  ];
+  const parts = lobes.map(([x, y, z, r]) => {
+    const g = new THREE.IcosahedronGeometry(r, 1);
+    g.scale(1, 0.8, 1);
+    g.translate(x, y, z);
+    return g;
+  });
+  return colorizeCanopyByHeight(mergeGeometries(parts), "#33501f", "#8fa855", 1.5);
+}
+
+interface TreeSpecies {
+  name: string;
+  weight: number;
+  trunkHeight: number;
+  leanBranches: boolean;
+  buildCanopy: () => THREE.BufferGeometry;
+}
+
+const TREE_SPECIES: TreeSpecies[] = [
+  { name: "rounded", weight: 0.55, trunkHeight: 4.4, leanBranches: true, buildCanopy: buildRoundedCanopy },
+  { name: "conical", weight: 0.2, trunkHeight: 3.8, leanBranches: false, buildCanopy: buildConicalCanopy },
+  { name: "spreading", weight: 0.25, trunkHeight: 3.4, leanBranches: true, buildCanopy: buildSpreadingCanopy },
+];
+
+function pickSpecies(rng: () => number): number {
+  const total = TREE_SPECIES.reduce((s, sp) => s + sp.weight, 0);
+  let t = rng() * total;
+  for (let i = 0; i < TREE_SPECIES.length; i++) {
+    t -= TREE_SPECIES[i].weight;
+    if (t <= 0) return i;
+  }
+  return TREE_SPECIES.length - 1;
 }
 
 /** A rounded, slightly flattened shrub blob — smaller/denser than the
@@ -127,13 +207,49 @@ function distanceToPath(px: number, pz: number, path: PathSegment): number {
   return min;
 }
 
+interface PathBounds {
+  path: PathSegment;
+  minX: number;
+  maxX: number;
+  minZ: number;
+  maxZ: number;
+}
+
+// With the real OSM path network (400+ segments) added on top of the
+// hand-tuned court paths, a full point-to-segment scan of every path for
+// every candidate placement (scattering ~1000 trees, each trying up to
+// 60 spots) would run the expensive distance math millions of times. A
+// cheap bounding-box precheck — computed once — skips the vast majority
+// of paths that aren't anywhere near the candidate point.
+const PATH_BOUNDS: PathBounds[] = ALL_PATHS.map((path) => {
+  let minX = Infinity;
+  let maxX = -Infinity;
+  let minZ = Infinity;
+  let maxZ = -Infinity;
+  for (const p of path.points) {
+    if (p.x < minX) minX = p.x;
+    if (p.x > maxX) maxX = p.x;
+    if (p.z < minZ) minZ = p.z;
+    if (p.z > maxZ) maxZ = p.z;
+  }
+  return { path, minX, maxX, minZ, maxZ };
+});
+
 function isClearOfObstacles(x: number, z: number, minPathClearance: number): boolean {
   for (const b of BUILDINGS) {
     const dist = Math.hypot(x - b.groundPosition.x, z - b.groundPosition.z);
     if (dist < b.footprintRadius + 3) return false;
   }
-  for (const path of PATHS) {
-    if (distanceToPath(x, z, path) < minPathClearance) return false;
+  for (const pb of PATH_BOUNDS) {
+    if (
+      x < pb.minX - minPathClearance ||
+      x > pb.maxX + minPathClearance ||
+      z < pb.minZ - minPathClearance ||
+      z > pb.maxZ + minPathClearance
+    ) {
+      continue;
+    }
+    if (distanceToPath(x, z, pb.path) < minPathClearance) return false;
   }
   return true;
 }
@@ -148,9 +264,9 @@ export function buildLandscaping(heightAt: (x: number, z: number) => number): La
 
   // ---- Trees, scattered across the whole real campus extent ------------
   const rng = mulberry32(TREES.scatterSeed);
-  const placements: { x: number; z: number; scale: number }[] = [
-    ...TREES.specimen.map((t) => ({ x: t.x, z: t.z, scale: t.scale })),
-  ];
+  const placements: { x: number; z: number; scale: number; species: number }[] = TREES.specimen.map(
+    (t) => ({ x: t.x, z: t.z, scale: t.scale, species: pickSpecies(rng) })
+  );
 
   let minX = -80;
   let maxX = 80;
@@ -178,67 +294,78 @@ export function buildLandscaping(heightAt: (x: number, z: number) => number): La
       }
     }
     if (tooClose) continue;
-    placements.push({ x, z, scale: 0.8 + rng() * 0.5 });
+    placements.push({ x, z, scale: 0.8 + rng() * 0.5, species: pickSpecies(rng) });
   }
 
-  const trunkGeo = buildTrunkGeometry();
-  const canopyGeo = buildCanopyGeometry();
-  // canopyGeo now bakes a real per-vertex light/dark colour attribute
-  // (see buildCanopyGeometry), so vertexColors=true is legitimate here —
-  // it multiplies with the per-instance instanceColor tint below for both
-  // a shaded/sunlit gradient AND per-tree hue variance.
-  const canopyMat = Materials.canopy.clone();
-  canopyMat.vertexColors = true;
-  // The visible colour now comes entirely from the baked vertex gradient
-  // times the per-instance tint (both applied in the shader) — leave the
-  // material's own base colour white so it doesn't multiply everything
-  // a third time and go too dark.
-  canopyMat.color.set(0xffffff);
-
-  const trunkMesh = new THREE.InstancedMesh(trunkGeo, Materials.trunk, placements.length);
-  const canopyMesh = new THREE.InstancedMesh(canopyGeo, canopyMat, placements.length);
-  trunkMesh.castShadow = true;
-  trunkMesh.receiveShadow = true;
-  canopyMesh.castShadow = true;
-  canopyMesh.receiveShadow = true;
-
+  // One InstancedMesh pair per species (each has its own geometry, so
+  // they can't share a single InstancedMesh) — trees are grouped by
+  // species rather than all sharing one silhouette, so the canopy/lawn
+  // reads as a real mixed planting instead of one tree cloned hundreds
+  // of times.
   const dummy = new THREE.Object3D();
   const color = new THREE.Color();
-  for (let i = 0; i < placements.length; i++) {
-    const p = placements[i];
-    const y = heightAt(p.x, p.z);
-    const rotY = rng() * Math.PI * 2;
-    // Slight non-uniform stretch per axis so instances of the same
-    // canopy geometry don't all read as identical silhouettes.
-    const sx = p.scale * (0.9 + rng() * 0.25);
-    const sy = p.scale * (0.9 + rng() * 0.3);
-    const sz = p.scale * (0.9 + rng() * 0.25);
+  for (let s = 0; s < TREE_SPECIES.length; s++) {
+    const species = TREE_SPECIES[s];
+    const speciesPlacements = placements.filter((p) => p.species === s);
+    if (speciesPlacements.length === 0) continue;
 
-    dummy.position.set(p.x, y, p.z);
-    dummy.rotation.set(0, rotY, 0);
-    dummy.scale.set(sx, sy, sz);
-    dummy.updateMatrix();
-    trunkMesh.setMatrixAt(i, dummy.matrix);
-    canopyMesh.setMatrixAt(i, dummy.matrix);
+    const trunkGeo = buildTrunkGeometry(species.trunkHeight, species.leanBranches);
+    const canopyGeo = species.buildCanopy();
+    // canopyGeo bakes a real per-vertex light/dark colour attribute (see
+    // colorizeCanopyByHeight), so vertexColors=true is legitimate here —
+    // it multiplies with the per-instance instanceColor tint below for
+    // both a shaded/sunlit gradient AND per-tree hue variance.
+    const canopyMat = Materials.canopy.clone();
+    canopyMat.vertexColors = true;
+    // The visible colour now comes entirely from the baked vertex
+    // gradient times the per-instance tint (both applied in the shader)
+    // — leave the material's own base colour white so it doesn't
+    // multiply everything a third time and go too dark.
+    canopyMat.color.set(0xffffff);
 
-    // Vertex colours already encode the light/dark canopy gradient, so
-    // this instance tint stays close to white — a gentle per-tree hue
-    // drift (some cooler/bluer, some warmer/olive) rather than a second
-    // full recolour on top of the baked gradient.
-    const hueDrift = (rng() - 0.5) * 0.06;
-    const brightness = 0.9 + rng() * 0.25;
-    color.setHSL(0.29 + hueDrift, 0.45, 0.5 * brightness);
-    canopyMesh.setColorAt(i, color);
+    const trunkMesh = new THREE.InstancedMesh(trunkGeo, Materials.trunk, speciesPlacements.length);
+    const canopyMesh = new THREE.InstancedMesh(canopyGeo, canopyMat, speciesPlacements.length);
+    trunkMesh.castShadow = true;
+    trunkMesh.receiveShadow = true;
+    canopyMesh.castShadow = true;
+    canopyMesh.receiveShadow = true;
+
+    for (let i = 0; i < speciesPlacements.length; i++) {
+      const p = speciesPlacements[i];
+      const y = heightAt(p.x, p.z);
+      const rotY = rng() * Math.PI * 2;
+      // Slight non-uniform stretch per axis so instances of the same
+      // canopy geometry don't all read as identical silhouettes.
+      const sx = p.scale * (0.9 + rng() * 0.25);
+      const sy = p.scale * (0.9 + rng() * 0.3);
+      const sz = p.scale * (0.9 + rng() * 0.25);
+
+      dummy.position.set(p.x, y, p.z);
+      dummy.rotation.set(0, rotY, 0);
+      dummy.scale.set(sx, sy, sz);
+      dummy.updateMatrix();
+      trunkMesh.setMatrixAt(i, dummy.matrix);
+      canopyMesh.setMatrixAt(i, dummy.matrix);
+
+      // Vertex colours already encode the light/dark canopy gradient, so
+      // this instance tint stays close to white — a gentle per-tree hue
+      // drift (some cooler/bluer, some warmer/olive) rather than a
+      // second full recolour on top of the baked gradient.
+      const hueDrift = (rng() - 0.5) * 0.06;
+      const brightness = 0.9 + rng() * 0.25;
+      color.setHSL(0.29 + hueDrift, 0.45, 0.5 * brightness);
+      canopyMesh.setColorAt(i, color);
+    }
+    trunkMesh.instanceMatrix.needsUpdate = true;
+    canopyMesh.instanceMatrix.needsUpdate = true;
+    if (canopyMesh.instanceColor) canopyMesh.instanceColor.needsUpdate = true;
+
+    group.add(trunkMesh, canopyMesh);
   }
-  trunkMesh.instanceMatrix.needsUpdate = true;
-  canopyMesh.instanceMatrix.needsUpdate = true;
-  if (canopyMesh.instanceColor) canopyMesh.instanceColor.needsUpdate = true;
-
-  group.add(trunkMesh, canopyMesh);
 
   // ---- Lamp posts -----------------------------------------------------
   const lampPositions: { x: number; z: number; rotY: number }[] = [];
-  for (const path of PATHS) {
+  for (const path of ALL_PATHS) {
     const pts = path.points.map((p) => new THREE.Vector2(p.x, p.z));
     const curve = new THREE.SplineCurve(pts);
     const length = curve.getLength();

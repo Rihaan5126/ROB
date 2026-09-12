@@ -232,4 +232,18 @@ export const Materials = {
     map: facadeHallMap,
     roughness: 0.82,
   }),
+  // Plant/HVAC roof clutter — the boxy service units, lift overruns and
+  // vent stacks every real flat-roofed building has, which is exactly
+  // the kind of detail that reads as "real building" from directly
+  // overhead instead of a clean, obviously-fake slab.
+  roofPlant: new THREE.MeshStandardMaterial({
+    color: new THREE.Color("#8f9096"),
+    roughness: 0.75,
+    metalness: 0.15,
+  }),
+  roofPlantLouvre: new THREE.MeshStandardMaterial({
+    color: new THREE.Color("#5a5c62"),
+    roughness: 0.6,
+    metalness: 0.25,
+  }),
 };

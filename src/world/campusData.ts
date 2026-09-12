@@ -29,6 +29,8 @@
 //    use their real OSM footprint + height directly.
 // ============================================================================
 
+import { REAL_PATHS } from "./campusPaths";
+
 export interface LatLon {
   lat: number;
   lon: number;
@@ -269,6 +271,14 @@ export const PATHS: PathSegment[] = [
     width: 3,
   },
 ];
+
+/** Every path the scene actually renders/uses for placement: the
+ * hand-tuned Chancellor's Court paths above (composed for a good look
+ * right at the hero landmarks) plus the real OpenStreetMap footway/path/
+ * pedestrian/cycleway network for the rest of the campus (see
+ * campusPaths.ts) — real pedestrian routes connecting every building,
+ * not just a couple of hero landmarks. */
+export const ALL_PATHS: PathSegment[] = [...PATHS, ...REAL_PATHS];
 
 // Paved plaza radii immediately around the two hero landmarks.
 export const PAVING = {

@@ -77,6 +77,9 @@ src/
                                  their position/size
     campusBuildings.ts            real building footprints/heights for the
                                    wider campus, sourced from OpenStreetMap
+    campusPaths.ts                 real footway/path/pedestrian/cycleway
+                                    centrelines for the wider campus, also
+                                    from OpenStreetMap
     buildings.ts                 the building registry: id, name, category,
                                   description, camera framing, model factory
                                   — generates 58 entries from
@@ -88,8 +91,9 @@ src/
     ArchitectureKit.ts             reusable procedural building components
     OldJoe.ts, AstonWebb.ts         the two bespoke, fully-modelled landmarks
     GenericBuilding.ts               extrudes a real OSM footprint polygon
-                                      into a massed volume (punched-window
-                                      facade, roof, cornice trim, paved apron)
+                                      into a massed volume (facade, roof,
+                                      cornice trim, plinth, paved apron,
+                                      rooftop HVAC/plant clutter)
 
   interaction/
     PickingController.ts        raycasting hover/click against tagged
@@ -154,11 +158,18 @@ camera-transition code needs to change either way.
   (`tiledMaterial`) so brick/stone coursing reads at a consistent scale
   regardless of how big or small a wall is. Old Joe and Aston Webb are
   built entirely from these.
-- **Instancing**: trees, foundation-planting shrubs, lamp posts and their
-  glow spheres are drawn with `InstancedMesh` — over a thousand of them
-  scattered across the real campus extent cost only a handful of draw
-  calls. Trees avoid every building footprint and path; shrubs form a
-  planting ring around all 60 buildings.
+- **Instancing**: trees (3 distinct species — rounded/broadleaf,
+  conical/columnar, wide-spreading — each its own `InstancedMesh` pair so
+  the lawns don't read as one tree cloned a thousand times), foundation-
+  planting shrubs, and lamp posts (1000+, placed along the real path
+  network) are all drawn with `InstancedMesh` — a handful of draw calls
+  regardless of count. Trees avoid every building footprint and path;
+  shrubs form a planting ring around all 60 buildings.
+- **Real path network**: `campusPaths.ts` — every OSM footway/path/
+  pedestrian/cycleway within 70m of a registered building, ~430 segments
+  merged into a single static mesh, plus the hand-tuned Chancellor's
+  Court paths. Tree placement, lamp posts and obstacle avoidance all use
+  this combined network (`ALL_PATHS` in `campusData.ts`).
 - **Textures** are all generated at runtime with `CanvasTexture` — no
   downloaded or scraped imagery, so there are no licensing concerns.
 
@@ -174,10 +185,13 @@ camera-transition code needs to change either way.
   height, all from OpenStreetMap (© OpenStreetMap contributors, licensed
   ODbL — extracted via the Overpass API on the `building=university`
   tag plus a short curated allowlist for halls/sport buildings clearly on
-  campus). The *massing* is still simplified (a punched-window facade
-  texture, a flat roof, a thin cornice trim) rather than each building's
-  real architecture — the shape and position are real, the facade detail
-  is not.
+  campus). The *massing* is still simplified (a facade texture, a flat
+  roof with rooftop plant clutter, a cornice/plinth) rather than each
+  building's real architecture — the shape and position are real, the
+  facade detail is not.
+- **Paths**: real `highway=footway|path|pedestrian|cycleway` centrelines
+  from OpenStreetMap, same licence, extracted the same way as the
+  buildings (see `campusPaths.ts`).
 - No University photographs or copyrighted imagery were used anywhere.
 
 ## What's deliberately not here yet
@@ -198,7 +212,7 @@ camera-transition code needs to change either way.
   search is a filter over `name`/`category`/`description`.
 - **"Find my way to..."**: `groundPosition` on every building is already
   plain world-space data; routing would path over that plus the existing
-  `PATHS` network in `campusData.ts`.
+  real `ALL_PATHS` network in `campusData.ts`.
 - **More real buildings**: re-run the Overpass query with a wider bounding
   box or a broader tag allowlist and regenerate `campusBuildings.ts`.
 - **Multiple campus areas**: `CampusScene` doesn't assume a single

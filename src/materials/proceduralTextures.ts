@@ -507,9 +507,14 @@ export function createGrassTexture(size = 1024): THREE.CanvasTexture {
   const rng = mulberry32(19);
 
   const base = ctx.createImageData(size, size);
-  // A muted, slightly desaturated field green — saturated cartoon greens
-  // read as fake; real UK lawns are closer to olive than emerald.
-  const baseColor = { r: 84, g: 108, b: 58 };
+  // Two field-green tones blended by patch position — a deeper, cooler
+  // green for well-watered/shaded ground and a warmer, drier olive for
+  // sunnier patches — rather than one flat colour just scaled darker or
+  // lighter. Real turf's colour *hue* shifts across a lawn, not just its
+  // brightness, and that hue variation is what a single scaled base
+  // colour can never quite sell.
+  const coolGreen = { r: 68, g: 96, b: 52 };
+  const warmGreen = { r: 104, g: 118, b: 60 };
 
   // Mowing stripes: alternating bands along a consistent diagonal, the
   // single biggest cue that reads as "real maintained lawn" from above.
@@ -527,24 +532,36 @@ export function createGrassTexture(size = 1024): THREE.CanvasTexture {
         Math.sin(x * 0.005 + y * 0.026 + 4.1) * 0.2;
       const patchT = (patch + 1) / 2;
 
+      // A second, higher-frequency layer for finer mottling within each
+      // large patch — otherwise every patch is a perfectly flat tone,
+      // which reads as a gradient/paint job rather than a living lawn.
+      const micro =
+        Math.sin(x * 0.07 + y * 0.05 + 2.3) * 0.5 + Math.sin(x * 0.045 - y * 0.09 + 0.6) * 0.5;
+      const microT = (micro + 1) / 2;
+
+      const hueT = Math.max(0, Math.min(1, patchT * 0.7 + microT * 0.3));
+      const r = coolGreen.r + (warmGreen.r - coolGreen.r) * hueT;
+      const g = coolGreen.g + (warmGreen.g - coolGreen.g) * hueT;
+      const b = coolGreen.b + (warmGreen.b - coolGreen.b) * hueT;
+
       // Mowing stripes (projected along the rotated axis).
       const proj = x * ca + y * sa;
       const stripe = Math.floor(proj / stripeWidth) % 2 === 0 ? 1 : 0.9;
 
-      const fineNoise = (rng() - 0.5) * 10;
+      const fineNoise = (rng() - 0.5) * 8;
+      const brightness = stripe * (0.92 + microT * 0.14);
 
-      const shade = stripe * (0.86 + patchT * 0.28);
       const i = (y * size + x) * 4;
-      base.data[i] = baseColor.r * shade + fineNoise;
-      base.data[i + 1] = baseColor.g * shade + fineNoise;
-      base.data[i + 2] = baseColor.b * shade + fineNoise * 0.6;
+      base.data[i] = r * brightness + fineNoise;
+      base.data[i + 1] = g * brightness + fineNoise;
+      base.data[i + 2] = b * brightness + fineNoise * 0.6;
       base.data[i + 3] = 255;
     }
   }
   ctx.putImageData(base, 0, 0);
 
   // A few soft worn/bare patches for realism, well short of a dirt path.
-  for (let i = 0; i < 5; i++) {
+  for (let i = 0; i < 6; i++) {
     const x = rng() * size;
     const y = rng() * size;
     const r = size * (0.03 + rng() * 0.05);
@@ -555,6 +572,26 @@ export function createGrassTexture(size = 1024): THREE.CanvasTexture {
     ctx.beginPath();
     ctx.arc(x, y, r, 0, Math.PI * 2);
     ctx.fill();
+  }
+
+  // Scattered clover/daisy-like flecks — small soft light dots in loose
+  // clusters, the fine texture real lawns show once you're not too far
+  // up. Clustered (not uniformly scattered) so they read as patches of
+  // clover rather than a dusting of noise.
+  const clusterCount = 22;
+  for (let c = 0; c < clusterCount; c++) {
+    const cx = rng() * size;
+    const cy = rng() * size;
+    const flecks = 8 + Math.floor(rng() * 14);
+    for (let f = 0; f < flecks; f++) {
+      const fx = cx + (rng() - 0.5) * size * 0.03;
+      const fy = cy + (rng() - 0.5) * size * 0.03;
+      const r = 0.8 + rng() * 1.1;
+      ctx.fillStyle = `rgba(226,230,200,${0.12 + rng() * 0.16})`;
+      ctx.beginPath();
+      ctx.arc(fx, fy, r, 0, Math.PI * 2);
+      ctx.fill();
+    }
   }
 
   // Sparse fine blade texture for when the camera does get close.
@@ -597,8 +634,33 @@ export function createRoofSlateTexture(size = 512): THREE.CanvasTexture {
   const rng = mulberry32(77);
   ctx.fillStyle = "#4a4d52";
   ctx.fillRect(0, 0, size, size);
+
+  // Broad, soft tonal patches — the uneven weathering/staining real flat
+  // roofing shows from above — laid down BEFORE the fine noise so it
+  // reads as large-scale variation, not more high-frequency content.
+  for (let i = 0; i < 14; i++) {
+    const x = rng() * size;
+    const y = rng() * size;
+    const r = size * (0.08 + rng() * 0.16);
+    const shade = 0.85 + rng() * 0.3;
+    const grad = ctx.createRadialGradient(x, y, 0, x, y, r);
+    grad.addColorStop(0, `rgba(${74 * shade},${77 * shade},${82 * shade},0.5)`);
+    grad.addColorStop(1, "rgba(74,77,82,0)");
+    ctx.fillStyle = grad;
+    ctx.beginPath();
+    ctx.arc(x, y, r, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
   addNoise(ctx, size, 12, rng);
   addWeatheringStreaks(ctx, size, rng, 5, 0.2);
+  // Per-pixel noise is exactly the high-frequency content that aliases
+  // into a "torn"/glitchy shimmer once a roof this size is seen from far
+  // overhead and heavily minified (see softenCanvas's own note on the
+  // brick/stone textures — the same lesson applies here, just never
+  // applied). A soft blur removes that energy while keeping the patchy
+  // tonal variation and streaks intact.
+  softenCanvas(canvas, size / 180);
   return finalize(canvas, 1, 1);
 }
 

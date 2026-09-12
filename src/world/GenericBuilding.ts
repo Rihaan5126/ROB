@@ -14,6 +14,25 @@ import { Materials } from "../materials/materials";
 import { tiledMaterial } from "./ArchitectureKit";
 import type { RealBuildingSpec, RealBuildingCategory } from "./campusBuildings";
 
+function mulberry32(seed: number) {
+  let a = seed;
+  return function () {
+    a |= 0;
+    a = (a + 0x6d2b79f5) | 0;
+    let t = Math.imul(a ^ (a >>> 15), 1 | a);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+/** Deterministic per-building seed from its id, so roof clutter is
+ * stable across reloads without needing to store anything. */
+function seedFromId(id: string): number {
+  let h = 0;
+  for (let i = 0; i < id.length; i++) h = (Math.imul(h, 31) + id.charCodeAt(i)) | 0;
+  return h;
+}
+
 function facadeForBuilding(spec: RealBuildingSpec): THREE.Material {
   if (spec.height > 24) return Materials.facadeModern;
   const byCategory: Record<RealBuildingCategory, THREE.Material> = {
@@ -79,6 +98,63 @@ function ringShape(footprint: [number, number][], outerScale: number, innerScale
   return outer;
 }
 
+/** Boxy HVAC/plant units, a lift-overrun housing and the odd vent stack
+ * — the rooftop clutter every real flat-roofed building has, and the
+ * single biggest thing missing when this scene is viewed from directly
+ * overhead: a bare, perfectly clean roof plane reads as obviously fake
+ * in a way it doesn't from any other angle. Positions are jittered
+ * inward from the footprint's bounding box, which is only approximate
+ * for a very non-rectangular footprint but is never far enough off to
+ * float clutter visibly past a real edge. */
+function addRoofClutter(
+  group: THREE.Group,
+  spec: RealBuildingSpec,
+  bounds: { minX: number; maxX: number; minZ: number; maxZ: number }
+): void {
+  if (spec.height < 9) return; // small buildings read cleaner without it
+
+  const rng = mulberry32(seedFromId(spec.id) ^ 0x9e3779b9);
+  const cx = (bounds.minX + bounds.maxX) / 2;
+  const cz = (bounds.minZ + bounds.maxZ) / 2;
+  // Shrink well inside the bounding box — real plant units sit clear of
+  // the parapet edge, and this also hedges against non-rectangular
+  // footprints where the true edge cuts in closer than the bbox implies.
+  const halfW = (bounds.maxX - bounds.minX) * 0.28;
+  const halfD = (bounds.maxZ - bounds.minZ) * 0.28;
+  if (halfW < 1.5 || halfD < 1.5) return; // footprint too slender for this to read well
+
+  const unitCount = 1 + Math.floor(rng() * 3);
+  for (let i = 0; i < unitCount; i++) {
+    const w = 1.6 + rng() * 2.4;
+    const d = 1.4 + rng() * 2.0;
+    const h = 0.9 + rng() * 1.1;
+    const x = cx + (rng() * 2 - 1) * halfW;
+    const z = cz + (rng() * 2 - 1) * halfD;
+
+    const unit = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), Materials.roofPlant);
+    unit.position.set(x, spec.height + h / 2, z);
+    unit.rotation.y = rng() * Math.PI * 2;
+    unit.castShadow = false;
+    group.add(unit);
+
+    // A louvred grille band on one face reads as an actual air-handling
+    // unit rather than a plain box from a closer/angled view.
+    const louvre = new THREE.Mesh(new THREE.BoxGeometry(w * 0.92, h * 0.5, 0.05), Materials.roofPlantLouvre);
+    louvre.position.set(0, -h * 0.15, d / 2 + 0.03);
+    unit.add(louvre);
+  }
+
+  // The occasional vent pipe / stack, taller and thinner than the plant
+  // boxes.
+  if (rng() < 0.7) {
+    const vh = 1.4 + rng() * 1.3;
+    const vent = new THREE.Mesh(new THREE.CylinderGeometry(0.18, 0.22, vh, 8), Materials.roofPlantLouvre);
+    vent.position.set(cx + (rng() * 2 - 1) * halfW, spec.height + vh / 2, cz + (rng() * 2 - 1) * halfD);
+    vent.castShadow = false;
+    group.add(vent);
+  }
+}
+
 export function createRealBuilding(spec: RealBuildingSpec): THREE.Group {
   const group = new THREE.Group();
   const shape = footprintShape(spec.footprint);
@@ -89,7 +165,26 @@ export function createRealBuilding(spec: RealBuildingSpec): THREE.Group {
   facadeClone.normalMap = facade.normalMap;
   facadeClone.side = THREE.DoubleSide; // safety net against footprint winding surprises
 
-  const roofMat = Materials.roofSlate.clone();
+  // Tiled at a consistent real-world scale (matching the facade/stone
+  // treatment) rather than one image stretched across the whole roof —
+  // stretching a single 512px tile over a 70m+ footprint is extreme
+  // minification, which is exactly what turns fine texture detail into a
+  // "glitchy" shimmer from directly overhead.
+  let footMinX = Infinity;
+  let footMaxX = -Infinity;
+  let footMinZ = Infinity;
+  let footMaxZ = -Infinity;
+  for (const [fx, fz] of spec.footprint) {
+    if (fx < footMinX) footMinX = fx;
+    if (fx > footMaxX) footMaxX = fx;
+    if (fz < footMinZ) footMinZ = fz;
+    if (fz > footMaxZ) footMaxZ = fz;
+  }
+  const roofMat = tiledMaterial(
+    Materials.roofSlate,
+    footMaxX - footMinX,
+    footMaxZ - footMinZ
+  ) as THREE.MeshStandardMaterial;
   roofMat.side = THREE.DoubleSide;
 
   const bodyGeo = new THREE.ExtrudeGeometry(shape, {
@@ -139,6 +234,8 @@ export function createRealBuilding(spec: RealBuildingSpec): THREE.Group {
   const plinth = new THREE.Mesh(plinthGeo, [Materials.stoneAshlar, Materials.stoneAshlar]);
   plinth.castShadow = false;
   group.add(plinth);
+
+  addRoofClutter(group, spec, { minX: footMinX, maxX: footMaxX, minZ: footMinZ, maxZ: footMaxZ });
 
   // Paved apron sized to the footprint's real extent.
   let maxR = 6;
