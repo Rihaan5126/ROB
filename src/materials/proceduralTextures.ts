@@ -496,40 +496,76 @@ export function createPavingTexture(size = 1024): THREE.CanvasTexture {
 }
 
 // ---------------------------------------------------------------------------
-// Grass
+// Grass — tuned for a predominantly overhead/aerial viewing angle: real
+// mown lawns read from above mostly through mowing-stripe banding and
+// soft patchy tonal variation, not individual blades, so that's where
+// the detail budget goes rather than into fine blade strokes that just
+// alias into noise once the camera is 100+ metres up.
 // ---------------------------------------------------------------------------
-export function createGrassTexture(size = 512): THREE.CanvasTexture {
+export function createGrassTexture(size = 1024): THREE.CanvasTexture {
   const { canvas, ctx } = makeCanvas(size);
   const rng = mulberry32(19);
 
-  // Base tonal noise (patchy, not flat).
   const base = ctx.createImageData(size, size);
+  // A muted, slightly desaturated field green — saturated cartoon greens
+  // read as fake; real UK lawns are closer to olive than emerald.
+  const baseColor = { r: 84, g: 108, b: 58 };
+
+  // Mowing stripes: alternating bands along a consistent diagonal, the
+  // single biggest cue that reads as "real maintained lawn" from above.
+  const stripeAngle = 0.5; // radians
+  const stripeWidth = size / 22;
+  const ca = Math.cos(stripeAngle);
+  const sa = Math.sin(stripeAngle);
+
   for (let y = 0; y < size; y++) {
     for (let x = 0; x < size; x++) {
-      const n =
-        Math.sin(x * 0.04 + y * 0.02) * 0.5 + Math.sin(x * 0.011 - y * 0.017) * 0.5;
-      const t = (n + 1) / 2;
-      const r = 58 + t * 22 + (rng() - 0.5) * 10;
-      const g = 96 + t * 26 + (rng() - 0.5) * 12;
-      const b = 46 + t * 14 + (rng() - 0.5) * 8;
+      // Large-scale patchy tone (worn patches, drainage variation).
+      const patch =
+        Math.sin(x * 0.012 + y * 0.008) * 0.5 +
+        Math.sin(x * 0.021 - y * 0.017 + 1.7) * 0.3 +
+        Math.sin(x * 0.005 + y * 0.026 + 4.1) * 0.2;
+      const patchT = (patch + 1) / 2;
+
+      // Mowing stripes (projected along the rotated axis).
+      const proj = x * ca + y * sa;
+      const stripe = Math.floor(proj / stripeWidth) % 2 === 0 ? 1 : 0.9;
+
+      const fineNoise = (rng() - 0.5) * 10;
+
+      const shade = stripe * (0.86 + patchT * 0.28);
       const i = (y * size + x) * 4;
-      base.data[i] = r;
-      base.data[i + 1] = g;
-      base.data[i + 2] = b;
+      base.data[i] = baseColor.r * shade + fineNoise;
+      base.data[i + 1] = baseColor.g * shade + fineNoise;
+      base.data[i + 2] = baseColor.b * shade + fineNoise * 0.6;
       base.data[i + 3] = 255;
     }
   }
   ctx.putImageData(base, 0, 0);
 
-  // Short blade-like strokes for texture at closer range.
-  for (let i = 0; i < 9000; i++) {
+  // A few soft worn/bare patches for realism, well short of a dirt path.
+  for (let i = 0; i < 5; i++) {
     const x = rng() * size;
     const y = rng() * size;
-    const len = 3 + rng() * 5;
+    const r = size * (0.03 + rng() * 0.05);
+    const grad = ctx.createRadialGradient(x, y, 0, x, y, r);
+    grad.addColorStop(0, "rgba(120,108,74,0.22)");
+    grad.addColorStop(1, "rgba(120,108,74,0)");
+    ctx.fillStyle = grad;
+    ctx.beginPath();
+    ctx.arc(x, y, r, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  // Sparse fine blade texture for when the camera does get close.
+  for (let i = 0; i < 3500; i++) {
+    const x = rng() * size;
+    const y = rng() * size;
+    const len = 2 + rng() * 4;
     const angle = Math.PI / 2 + (rng() - 0.5) * 0.9;
-    const shade = 0.7 + rng() * 0.6;
-    const c = new THREE.Color("#5c8a48").multiplyScalar(shade);
-    ctx.strokeStyle = `rgba(${c.r * 255},${c.g * 255},${c.b * 255},0.55)`;
+    const shade = 0.7 + rng() * 0.5;
+    const c = new THREE.Color("#5c7a42").multiplyScalar(shade);
+    ctx.strokeStyle = `rgba(${c.r * 255},${c.g * 255},${c.b * 255},0.3)`;
     ctx.lineWidth = 1;
     ctx.beginPath();
     ctx.moveTo(x, y);
@@ -537,6 +573,7 @@ export function createGrassTexture(size = 512): THREE.CanvasTexture {
     ctx.stroke();
   }
 
+  softenCanvas(canvas, 1.2);
   return finalize(canvas, 1, 1);
 }
 

@@ -1,67 +1,129 @@
 // ============================================================================
 // GenericBuilding.ts
 //
-// A lightweight massing generator for the "rest of campus" — buildings
-// that need to be recognisable and interactive, but don't warrant Old
-// Joe/Aston Webb-level bespoke modelling. A stone plinth, a punched-window
-// facade (one texture, not modelled windows), a cornice, a parapet and an
-// entrance — reusing the same ArchitectureKit primitives as the hero
-// landmarks, just assembled much more cheaply.
+// Extrudes a building's REAL footprint polygon (from campusBuildings.ts,
+// sourced from OpenStreetMap) into a simple massed volume — a punched-
+// window facade on the real plan shape, a flat roof cap, a thin cornice
+// trace, and a paved apron. Not architectural detail, but the *shape* and
+// *position* are the real building's, not a generic box — which is what
+// actually makes the wider campus map read as accurate.
 // ============================================================================
 
 import * as THREE from "three";
 import { Materials } from "../materials/materials";
-import { createBrickWall, createCornice, createStairs } from "./ArchitectureKit";
+import { tiledMaterial } from "./ArchitectureKit";
+import type { RealBuildingSpec, RealBuildingCategory } from "./campusBuildings";
 
-export interface GenericBuildingOptions {
-  width: number;
-  depth: number;
-  height: number;
-  facadeMaterial: THREE.Material;
-  rotationY?: number;
-  /** Adds a small entrance canopy + steps on the -Z (front) face. */
-  entrance?: boolean;
+function facadeForBuilding(spec: RealBuildingSpec): THREE.Material {
+  if (spec.height > 24) return Materials.facadeModern;
+  const byCategory: Record<RealBuildingCategory, THREE.Material> = {
+    hall: Materials.facadeHall,
+    sport: Materials.facadeModern,
+    amenity: Materials.facadeAcademic,
+    academic: Materials.facadeAcademic,
+  };
+  return byCategory[spec.category];
 }
 
-export function createGenericBuilding(opts: GenericBuildingOptions): THREE.Group {
-  const group = new THREE.Group();
-  const { width, depth, height } = opts;
+/** Builds a closed THREE.Shape from a footprint polygon. The z-negation
+ * here cancels out the rotateX(-90°) used to lay the extrusion flat below
+ * — without it the footprint (and its winding, which determines which
+ * way the wall faces point) comes out mirrored north-south. */
+function footprintShape(footprint: [number, number][]): THREE.Shape {
+  const shape = new THREE.Shape();
+  footprint.forEach(([x, z], i) => {
+    if (i === 0) shape.moveTo(x, -z);
+    else shape.lineTo(x, -z);
+  });
+  shape.closePath();
+  return shape;
+}
 
-  const apronGeo = new THREE.CircleGeometry(Math.max(width, depth) * 0.75, 24);
+/** A thin hollow border ring around a footprint — the outer boundary
+ * scaled out, the same footprint scaled in as a hole, so extruding it
+ * yields a genuine thin trim instead of a solid duplicate slab. */
+function ringShape(footprint: [number, number][], outerScale: number, innerScale: number): THREE.Shape {
+  const outer = new THREE.Shape();
+  footprint.forEach(([x, z], i) => {
+    const ox = x * outerScale;
+    const oz = -z * outerScale;
+    if (i === 0) outer.moveTo(ox, oz);
+    else outer.lineTo(ox, oz);
+  });
+  outer.closePath();
+
+  const hole = new THREE.Path();
+  footprint.forEach(([x, z], i) => {
+    const ix = x * innerScale;
+    const iz = -z * innerScale;
+    if (i === 0) hole.moveTo(ix, iz);
+    else hole.lineTo(ix, iz);
+  });
+  hole.closePath();
+  outer.holes.push(hole);
+
+  return outer;
+}
+
+export function createRealBuilding(spec: RealBuildingSpec): THREE.Group {
+  const group = new THREE.Group();
+  const shape = footprintShape(spec.footprint);
+
+  const facade = tiledMaterial(facadeForBuilding(spec), 18, spec.height) as THREE.MeshStandardMaterial;
+  const facadeClone = facade.clone();
+  facadeClone.map = facade.map;
+  facadeClone.normalMap = facade.normalMap;
+  facadeClone.side = THREE.DoubleSide; // safety net against footprint winding surprises
+
+  const roofMat = Materials.roofSlate.clone();
+  roofMat.side = THREE.DoubleSide;
+
+  const bodyGeo = new THREE.ExtrudeGeometry(shape, {
+    depth: spec.height,
+    bevelEnabled: false,
+    curveSegments: 1,
+  });
+  bodyGeo.rotateX(-Math.PI / 2);
+  // ExtrudeGeometry's two material groups are, perhaps counter-intuitively,
+  // group 0 = the top+bottom caps and group 1 = the extruded side walls
+  // (verified directly against the generated normals) — the reverse of
+  // the "sides first" order it's easy to assume.
+  const body = new THREE.Mesh(bodyGeo, [roofMat, facadeClone]);
+  // Deliberately no shadow casting/receiving here: the sun's shadow
+  // camera frustum is sized for the Chancellor's Court core (see
+  // Lighting.ts), and these buildings are scattered across a ~1km real
+  // campus — anything outside that frustum samples the shadow map's
+  // clamped edge and renders pitch black. Old Joe, Aston Webb and the
+  // landscaping near the court still cast/receive shadows normally.
+  body.castShadow = false;
+  body.receiveShadow = false;
+  group.add(body);
+
+  // A thin cornice trace around the roofline: a proper hollow border ring
+  // (outer edge scaled out, inner edge scaled in, as a shape hole) rather
+  // than a solid duplicate slab — a filled slab would sit on top of and
+  // completely hide the actual roof material underneath it.
+  const corniceShape = ringShape(spec.footprint, 1.045, 0.98);
+  const corniceGeo = new THREE.ExtrudeGeometry(corniceShape, { depth: 0.25, bevelEnabled: false, curveSegments: 1 });
+  corniceGeo.rotateX(-Math.PI / 2);
+  const cornice = new THREE.Mesh(corniceGeo, Materials.stoneDarleyDale);
+  cornice.position.y = spec.height - 0.02;
+  cornice.castShadow = false;
+  group.add(cornice);
+
+  // Paved apron sized to the footprint's real extent.
+  let maxR = 6;
+  for (const [x, z] of spec.footprint) maxR = Math.max(maxR, Math.hypot(x, z));
+  const apronGeo = new THREE.CircleGeometry(maxR + 3, 28);
   apronGeo.rotateX(-Math.PI / 2);
   const apron = new THREE.Mesh(apronGeo, Materials.paving);
   apron.position.y = 0.02;
   apron.receiveShadow = true;
   group.add(apron);
 
-  const plinth = createBrickWall(width + 0.5, 0.7, depth + 0.5, Materials.stoneAshlar);
-  group.add(plinth);
-
-  const wall = createBrickWall(width, height, depth, opts.facadeMaterial);
-  group.add(wall);
-
-  const cornice = createCornice(width + 0.5, depth + 0.5, 0.35, Materials.stoneDarleyDale);
-  cornice.position.y = height;
-  group.add(cornice);
-
-  const parapet = createBrickWall(width - 0.6, 0.9, depth - 0.6, Materials.stoneAshlar);
-  parapet.position.y = height + 0.2;
-  group.add(parapet);
-
-  if (opts.entrance) {
-    const stairs = createStairs(3.2, 0.5, 1.2, 3, Materials.stoneAshlar);
-    stairs.position.set(0, 0, -depth / 2 + 0.05);
-    group.add(stairs);
-  }
-
-  group.rotation.y = opts.rotationY ?? 0;
-
-  group.traverse((obj) => {
-    if (obj instanceof THREE.Mesh) {
-      obj.castShadow = true;
-      obj.receiveShadow = true;
-    }
-  });
-
+  // No rotation applied here deliberately: the footprint polygon is
+  // already in true local (x, z) space (converted directly from real
+  // lat/lon), so it's correctly oriented as extruded — rotating the
+  // group again would double-rotate it.
   return group;
 }

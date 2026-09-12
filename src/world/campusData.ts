@@ -19,11 +19,14 @@
 //  - University of Birmingham campus map: https://www.birmingham.ac.uk/contact/campus-map
 //  - Historic England list entry 1076133 (Great Hall / Quadrant Range)
 //  - Historic England list entry 1210306 (Chamberlain / "Old Joe" Tower)
-//  - Lat/lon anchors are approximate (hand-read from public map imagery),
-//    NOT a survey. Building footprints/heights are reasoned approximations
-//    built to match the documented character of the buildings, not a scan.
-//  - Any future OpenStreetMap-derived footprints used here must carry
-//    "© OpenStreetMap contributors" and comply with the ODbL.
+//  - Old Joe and Aston Webb's anchor coordinates, and every building in
+//    campusBuildings.ts, are the real centroid of that building's footprint
+//    polygon in OpenStreetMap (© OpenStreetMap contributors, ODbL),
+//    fetched via the Overpass API — not hand-read from a map. Building
+//    massing/height for Old Joe and Aston Webb is still a reasoned
+//    approximation built to match the documented character of the
+//    buildings (not a photogrammetry scan); the wider campus buildings
+//    use their real OSM footprint + height directly.
 // ============================================================================
 
 export interface LatLon {
@@ -35,10 +38,17 @@ export interface LatLon {
 // Geographic anchors
 // ---------------------------------------------------------------------------
 
-/** World origin: ground centre of Old Joe. Everything is measured from here. */
-export const ORIGIN_LATLON: LatLon = { lat: 52.44985, lon: -1.93068 };
+/** World origin: ground centre of Old Joe — the real OSM centroid of
+ * "Joseph Chamberlain Memorial Clock Tower". Everything is measured from
+ * here. */
+export const ORIGIN_LATLON: LatLon = { lat: 52.44983767272727, lon: -1.9306442181818184 };
 
-export const ASTON_WEBB_LATLON: LatLon = { lat: 52.44893, lon: -1.93085 };
+/** Kept for provenance/documentation — Aston Webb's precise position is
+ * set directly below as ASTON_WEBB_LOCAL (the real OSM centroid of
+ * "Aston Webb Building Great Hall" projected relative to ORIGIN_LATLON),
+ * since that's the number that actually matters and round-tripping it
+ * back through a hand-read lat/lon would only reintroduce error. */
+export const ASTON_WEBB_LATLON: LatLon = { lat: 52.448936, lon: -1.930847 };
 
 /** Bounding box for the Phase 1 playable area, per the design brief. */
 export const AREA_BOUNDS_LATLON = {
@@ -66,7 +76,9 @@ export function latLonToLocal(p: LatLon): { x: number; z: number } {
   return { x: east, z: -north }; // north is -Z
 }
 
-export const ASTON_WEBB_LOCAL = latLonToLocal(ASTON_WEBB_LATLON);
+/** Precise local position, straight from the OSM Great Hall footprint
+ * centroid (see the module comment above) rather than a lat/lon round-trip. */
+export const ASTON_WEBB_LOCAL = { x: -13.52, z: 101.01 };
 
 // ---------------------------------------------------------------------------
 // OLD JOE — Joseph Chamberlain Memorial Clock Tower
@@ -188,8 +200,8 @@ export const ASTON_WEBB = {
 // ---------------------------------------------------------------------------
 
 export const TERRAIN = {
-  size: 1000, // large ground plane covering the wider campus map
-  segments: 180,
+  size: 1700, // large ground plane covering the real campus building spread
+  segments: 220,
   // Subtle, configurable elevation — a gentle rise from the court up
   // toward Old Joe, refined later with survey data.
   elevation: {

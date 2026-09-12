@@ -14,7 +14,12 @@
 import * as THREE from "three";
 import { createSkyTexture, createGlowTexture } from "../materials/proceduralTextures";
 
-const SKY_RADIUS = 280;
+// Must comfortably exceed the farthest the camera can ever be from any
+// terrain/building geometry (the sky dome is re-centred on the camera
+// every frame, so anything farther than this radius from the camera would
+// otherwise be hidden behind the dome once the user zooms out to see the
+// whole campus) and stay under the camera's far clip plane.
+const SKY_RADIUS = 2200;
 
 const PRESET = {
   skyTop: "#3f7fc9",
@@ -31,7 +36,10 @@ const PRESET = {
   sunGlowOpacity: 0.85,
   sunGlowScale: 55,
   fogColor: "#cfe3f2",
-  fogDensity: 0.0011,
+  // Lower than a "close-up" scene would use — the whole point of the
+  // overhead map view is to see the wider campus, so fog should read as
+  // a subtle depth cue at the far edges, not swallow it.
+  fogDensity: 0.00035,
   lampIntensity: 0.05,
 };
 

@@ -69,8 +69,8 @@ const facadeHallMap = createWindowFacadeTexture({
 // Ground/paving get a fixed real-world-ish tiling density up front since
 // they're each only used once (not cloned-and-resized per instance like
 // the building walls are).
-grassMap.repeat.set(80, 80);
-pavingMap.repeat.set(22, 22);
+grassMap.repeat.set(136, 136);
+pavingMap.repeat.set(38, 38);
 
 export const Materials = {
   brickRed: new THREE.MeshStandardMaterial({

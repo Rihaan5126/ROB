@@ -8,16 +8,22 @@
 // for content. Adding a new building later means adding one entry here
 // (plus a model-builder function) — nothing else in the interaction
 // pipeline needs to change.
+//
+// Old Joe and Aston Webb are bespoke, hand-modelled landmarks with their
+// own "Explore in 3D" viewer. The rest of the campus is generated from
+// real OpenStreetMap footprints (campusBuildings.ts) — real position,
+// real plan shape, real height, just simplified massing instead of
+// bespoke architectural detail.
 // ============================================================================
 
 import * as THREE from "three";
 import { createOldJoe } from "./OldJoe";
 import { createAstonWebb } from "./AstonWebb";
-import { createGenericBuilding } from "./GenericBuilding";
-import { Materials } from "../materials/materials";
+import { createRealBuilding } from "./GenericBuilding";
 import { OLD_JOE, ASTON_WEBB } from "./campusData";
+import { CAMPUS_BUILDINGS, type RealBuildingCategory } from "./campusBuildings";
 
-export type BuildingCategory = "landmark" | "academic" | "hall" | "sport" | "amenity";
+export type BuildingCategory = "landmark" | RealBuildingCategory;
 
 export interface CameraFraming {
   /** World-space point the camera looks at. */
@@ -92,190 +98,74 @@ export const BUILDINGS: BuildingDefinition[] = [
 ];
 
 // ---------------------------------------------------------------------------
-// The wider campus — simplified massing, still fully interactive
-// (hoverable, nameable, clickable, camera-framed), just without a
-// dedicated detail viewer. Positions are reasoned approximations of the
-// real relative layout south/east/west of Chancellor's Court, not survey
-// data — see README "Accuracy limitations".
+// Hand-written standfirsts for the buildings most people will actually
+// look for. Everything else in CAMPUS_BUILDINGS gets a sensible
+// category-based description generated below — accurate positions/shapes
+// for all 58 are far more valuable than hand-written copy for every one.
 // ---------------------------------------------------------------------------
 
-interface SimpleBuildingSpec {
-  id: string;
-  name: string;
-  category: BuildingCategory;
-  description: string;
-  x: number;
-  z: number;
-  width: number;
-  depth: number;
-  height: number;
-  facade: THREE.Material;
-  rotationY?: number;
+const CURATED_DESCRIPTIONS: Record<string, string> = {
+  "guild-of-students":
+    "The students' union — home to clubs, societies, bars and campaigns, and the social heart of student life at Birmingham.",
+  "main-library": "The University's principal library, at the heart of campus for every discipline.",
+  "muirhead-tower": "A landmark tower housing the College of Arts and Law.",
+  "the-barber-institute-of-fine-arts":
+    "An art gallery and concert hall housing an internationally significant collection, from Old Masters to the Impressionists.",
+  "staff-house": "A social and dining hub for University staff.",
+  "university-house": "Student support and administrative services.",
+  "university-centre": "Campus shops, services and amenities.",
+  "business-school": "Home to Birmingham Business School.",
+  "computer-science": "Teaching, labs and research space for the School of Computer Science.",
+  "murray-learning-centre": "A central library and 24-hour study space.",
+  "bramall-music-building": "Home to the Department of Music and its concert hall, hosting recitals year-round.",
+  "haworth-building": "Teaching and research space for Chemistry.",
+  "poynting-building": "Home to the School of Physics and Astronomy.",
+  "watson-building": "Teaching and research laboratories.",
+  "law-building": "Home to Birmingham Law School.",
+  "lapworth-museum-of-geology": "The University's geology museum, open to the public.",
+  "university-of-birmingham-sport-and-fitness": "The University's main sport and fitness centre, open to students, staff and the public.",
+};
+
+function autoDescription(name: string, category: RealBuildingCategory): string {
+  switch (category) {
+    case "hall":
+      return `${name} — University of Birmingham student accommodation.`;
+    case "sport":
+      return `${name} — a University of Birmingham sport and recreation facility.`;
+    case "amenity":
+      return `${name} — a University of Birmingham campus amenity.`;
+    default:
+      return `${name} — a University of Birmingham academic building.`;
+  }
 }
 
-function buildSimple(spec: SimpleBuildingSpec): BuildingDefinition {
+for (const spec of CAMPUS_BUILDINGS) {
   const groundPosition = new THREE.Vector3(spec.x, 0, spec.z);
-  const footprintRadius = Math.hypot(spec.width, spec.depth) / 2 + 3;
-  const camDist = Math.max(28, spec.height * 2.2, footprintRadius * 2.4);
+  let footprintRadius = 6;
+  for (const [fx, fz] of spec.footprint) footprintRadius = Math.max(footprintRadius, Math.hypot(fx, fz));
+  footprintRadius += 3;
 
-  return {
+  const camDist = Math.max(30, spec.height * 2.4, footprintRadius * 2.6);
+
+  BUILDINGS.push({
     id: spec.id,
     name: spec.name,
     category: spec.category,
-    description: spec.description,
+    description: CURATED_DESCRIPTIONS[spec.id] ?? autoDescription(spec.name, spec.category),
     groundPosition,
     footprintRadius,
     hasDetailView: false,
     overviewFraming: {
-      target: new THREE.Vector3(spec.x, spec.height * 0.45, spec.z),
-      offset: new THREE.Vector3(camDist * 0.6, camDist * 0.55, camDist * 0.75),
+      target: new THREE.Vector3(spec.x, spec.height * 0.5, spec.z),
+      offset: new THREE.Vector3(camDist * 0.62, camDist * 0.58, camDist * 0.72),
     },
-    buildModel: () => ({
-      group: (() => {
-        const group = createGenericBuilding({
-          width: spec.width,
-          depth: spec.depth,
-          height: spec.height,
-          facadeMaterial: spec.facade,
-          rotationY: spec.rotationY,
-          entrance: true,
-        });
-        group.position.set(spec.x, 0, spec.z);
-        return group;
-      })(),
-    }),
-  };
+    buildModel: () => {
+      const group = createRealBuilding(spec);
+      group.position.set(spec.x, 0, spec.z);
+      return { group };
+    },
+  });
 }
-
-const SIMPLE_BUILDINGS: SimpleBuildingSpec[] = [
-  {
-    id: "muirhead-tower",
-    name: "Muirhead Tower",
-    category: "academic",
-    description:
-      "A landmark 1960s tower housing the College of Arts and Law, standing tall over University Square south of Chancellor's Court.",
-    x: 4,
-    z: 225,
-    width: 34,
-    depth: 22,
-    height: 46,
-    facade: Materials.facadeModern,
-  },
-  {
-    id: "main-library",
-    name: "Main Library",
-    category: "academic",
-    description:
-      "The University's principal library, at the centre of University Square — millions of items and thousands of study spaces for every discipline on campus.",
-    x: 42,
-    z: 232,
-    width: 40,
-    depth: 26,
-    height: 20,
-    facade: Materials.facadeModern,
-    rotationY: -0.3,
-  },
-  {
-    id: "guild-of-students",
-    name: "Guild of Students",
-    category: "amenity",
-    description:
-      "The students' union — home to clubs, societies, bars and campaigns, and the social heart of student life at Birmingham.",
-    x: -62,
-    z: 175,
-    width: 36,
-    depth: 24,
-    height: 14,
-    facade: Materials.facadeHall,
-    rotationY: 0.4,
-  },
-  {
-    id: "bramall-music-building",
-    name: "Bramall Music Building",
-    category: "academic",
-    description:
-      "Home to the Department of Music and the Bramall Music Building's concert hall, hosting recitals and performances year-round.",
-    x: -95,
-    z: 235,
-    width: 26,
-    depth: 22,
-    height: 16,
-    facade: Materials.facadeAcademic,
-    rotationY: 0.2,
-  },
-  {
-    id: "school-of-engineering",
-    name: "School of Engineering",
-    category: "academic",
-    description:
-      "Teaching and research space for Chemical, Civil, Mechanical and Electronic Engineering, on the eastern side of campus.",
-    x: 95,
-    z: 185,
-    width: 38,
-    depth: 26,
-    height: 22,
-    facade: Materials.facadeAcademic,
-    rotationY: -0.5,
-  },
-  {
-    id: "computer-science",
-    name: "School of Computer Science",
-    category: "academic",
-    description:
-      "Teaching, labs and research space for Computer Science, part of the School of Computer Science on the east side of campus.",
-    x: 118,
-    z: 145,
-    width: 28,
-    depth: 20,
-    height: 18,
-    facade: Materials.facadeModern,
-    rotationY: -0.5,
-  },
-  {
-    id: "munrow-sports-centre",
-    name: "Munrow Sports Centre",
-    category: "sport",
-    description:
-      "The University's main sport and fitness centre — a gym, courts and pools open to students, staff and the public.",
-    x: -45,
-    z: 320,
-    width: 44,
-    depth: 30,
-    height: 13,
-    facade: Materials.facadeModern,
-    rotationY: 0.15,
-  },
-  {
-    id: "vale-village",
-    name: "The Vale Village",
-    category: "hall",
-    description:
-      "Halls of residence set around parkland and a lake — one of the largest self-contained student villages of any UK university.",
-    x: -130,
-    z: 300,
-    width: 30,
-    depth: 20,
-    height: 15,
-    facade: Materials.facadeHall,
-    rotationY: -0.25,
-  },
-  {
-    id: "barber-institute",
-    name: "Barber Institute of Fine Arts",
-    category: "amenity",
-    description:
-      "An art gallery and concert hall housing an internationally significant collection, from Old Masters to the Impressionists.",
-    x: 65,
-    z: 290,
-    width: 22,
-    depth: 18,
-    height: 12,
-    facade: Materials.facadeAcademic,
-    rotationY: 0.6,
-  },
-];
-
-BUILDINGS.push(...SIMPLE_BUILDINGS.map(buildSimple));
 
 export function getBuilding(id: string): BuildingDefinition | undefined {
   return BUILDINGS.find((b) => b.id === id);

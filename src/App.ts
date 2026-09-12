@@ -31,15 +31,19 @@ import { InstructionHint } from "./ui/InstructionHint";
 
 type Mode = "overview" | "transitioning" | "detail";
 
-const DEFAULT_TARGET = new THREE.Vector3(0, 20, 120);
-const DEFAULT_POSITION = new THREE.Vector3(10, 110, 260);
+// This is a map, not a walkthrough: the default framing and the orbit
+// limits below both keep the camera predominantly overhead — steep
+// satellite-style tilt, never a ground-level/horizon view. Zooming
+// further out reaches the whole ~1 x 0.7 km real campus spread.
+const DEFAULT_TARGET = new THREE.Vector3(0, 8, 110);
+const DEFAULT_POSITION = new THREE.Vector3(40, 250, 290);
 
 // The cinematic intro starts from a dramatic, distant "satellite" framing
 // and swoops down into the default establishing shot — the opening beat
 // of the whole experience.
-const INTRO_START_POSITION = new THREE.Vector3(-140, 280, 440);
-const INTRO_START_TARGET = new THREE.Vector3(0, 15, 150);
-const INTRO_DURATION = 3.6;
+const INTRO_START_POSITION = new THREE.Vector3(-220, 480, 560);
+const INTRO_START_TARGET = new THREE.Vector3(0, 10, 120);
+const INTRO_DURATION = 3.8;
 
 export class App {
   private readonly container: HTMLElement;
@@ -100,7 +104,7 @@ export class App {
     container.insertBefore(this.renderer.domElement, container.firstChild);
 
     const aspect = initialWidth / initialHeight;
-    this.camera = new THREE.PerspectiveCamera(50, aspect, 0.1, 1000);
+    this.camera = new THREE.PerspectiveCamera(50, aspect, 0.1, 2500);
     this.camera.position.copy(INTRO_START_POSITION);
 
     this.controls = new OrbitControls(this.camera, this.renderer.domElement);
@@ -109,9 +113,13 @@ export class App {
     this.controls.dampingFactor = 0.07;
     this.controls.screenSpacePanning = false;
     this.controls.minDistance = 18;
-    this.controls.maxDistance = 480;
+    this.controls.maxDistance = 1400;
+    // A map, not a walkthrough: capped well short of the horizon so the
+    // camera always stays a satellite-style overhead view, never a
+    // ground-level/eye-level look — there's a separate detail viewer for
+    // getting close to a specific building.
     this.controls.minPolarAngle = 0.05;
-    this.controls.maxPolarAngle = Math.PI * 0.49;
+    this.controls.maxPolarAngle = Math.PI * 0.4;
     this.controls.enabled = false;
     this.controls.update();
 
