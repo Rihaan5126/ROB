@@ -13,6 +13,16 @@ import { OrbitControls } from "three/addons/controls/OrbitControls.js";
 import type { BuildingDefinition, CameraFraming } from "../world/buildings";
 import { Materials } from "../materials/materials";
 
+function easeOutBack(t: number): number {
+  const c1 = 1.70158;
+  const c3 = c1 + 1;
+  return 1 + c3 * Math.pow(t - 1, 3) + c1 * Math.pow(t - 1, 2);
+}
+
+function easeOutCubic(t: number): number {
+  return 1 - Math.pow(1 - t, 3);
+}
+
 function buildBackdrop(): THREE.Mesh {
   const size = 512;
   const canvas = document.createElement("canvas");
@@ -45,6 +55,13 @@ export class DetailViewer {
     target: new THREE.Vector3(0, 10, 0),
     offset: new THREE.Vector3(0, 10, 60),
   };
+
+  // A quick "presenting" reveal each time a model loads — scale pops in
+  // with a touch of overshoot while the model spins down to rest, rather
+  // than the building just appearing.
+  private readonly REVEAL_DURATION = 0.9;
+  private readonly REVEAL_SPIN = 0.6; // radians
+  private revealElapsed = this.REVEAL_DURATION;
 
   constructor(domElement: HTMLElement, aspect: number) {
     this.camera = new THREE.PerspectiveCamera(45, aspect, 0.1, 1000);
@@ -107,6 +124,7 @@ export class DetailViewer {
       target: new THREE.Vector3(0, 10, 0),
       offset: new THREE.Vector3(0, 10, 60),
     };
+    this.revealElapsed = 0;
     this.resetView();
   }
 
@@ -116,9 +134,16 @@ export class DetailViewer {
     this.controls.update();
   }
 
-  update(date: Date): void {
+  update(date: Date, delta: number): void {
     this.controls.update();
     this.clockUpdate?.(date);
+
+    if (this.modelGroup && this.revealElapsed < this.REVEAL_DURATION) {
+      this.revealElapsed = Math.min(this.REVEAL_DURATION, this.revealElapsed + delta);
+      const t = this.revealElapsed / this.REVEAL_DURATION;
+      this.modelGroup.scale.setScalar(Math.max(0.001, easeOutBack(t)));
+      this.modelGroup.rotation.y = (1 - easeOutCubic(t)) * this.REVEAL_SPIN;
+    }
   }
 
   dispose(): void {

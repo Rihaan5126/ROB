@@ -25,6 +25,7 @@ export class ExplorePanel {
   onSelectLocation: ((id: string) => void) | null = null;
   onToggleCategory: ((category: BuildingCategory, visible: boolean) => void) | null = null;
 
+  private readonly dock: HTMLDivElement;
   private readonly panel: HTMLDivElement;
   private readonly locationsBtn: HTMLButtonElement;
   private readonly layersBtn: HTMLButtonElement;
@@ -35,12 +36,17 @@ export class ExplorePanel {
   constructor(container: HTMLElement, buildings: BuildingDefinition[]) {
     this.buildings = buildings;
     const dock = document.createElement("div");
+    this.dock = dock;
     dock.style.cssText = `
       position: absolute; left: 28px; bottom: 28px;
       display: flex; flex-direction: column-reverse;
       align-items: flex-start; gap: 12px;
       z-index: 14;
       font: 400 14px/1.4 -apple-system, "Segoe UI", Arial, sans-serif;
+      opacity: 0;
+      pointer-events: none;
+      transform: translateY(10px);
+      transition: opacity 0.35s ease, transform 0.35s cubic-bezier(.2,.8,.3,1);
     `;
 
     const buttonRow = document.createElement("div");
@@ -195,5 +201,20 @@ export class ExplorePanel {
 
       this.panel.appendChild(row);
     }
+  }
+
+  /** Hides the whole Locations/Layers dock — used while the detail viewer
+   * is open, so its chrome stays minimal. */
+  show(): void {
+    this.dock.style.opacity = "1";
+    this.dock.style.transform = "translateY(0)";
+    this.dock.style.pointerEvents = "auto";
+  }
+
+  hide(): void {
+    if (this.activeTab) this.toggle(this.activeTab);
+    this.dock.style.opacity = "0";
+    this.dock.style.transform = "translateY(10px)";
+    this.dock.style.pointerEvents = "none";
   }
 }
