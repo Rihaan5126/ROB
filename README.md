@@ -1,4 +1,4 @@
-# University of Birmingham — Interactive Campus Map
+# University of Birmingham: Interactive Campus Map
 
 A polished, interactive 3D digital-twin map of the University of
 Birmingham's Edgbaston campus — a satellite-style overhead map you explore
