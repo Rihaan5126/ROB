@@ -704,46 +704,179 @@ export function createGlowTexture(size = 256): THREE.CanvasTexture {
 }
 
 // ---------------------------------------------------------------------------
-// Punched-window facade — a cheap stand-in for the wider campus's simpler
-// buildings. One texture (wall colour + a grid of inset windows) rather
-// than modelling individual window meshes on every block.
+// Edwardian/Victorian institutional facade — red brick with stone plinth,
+// cornice and window dressings, round-arched principal-floor windows and
+// plain sashes above, a wider "entrance bay" at ground level. Cheap
+// (one texture per building), but reads as the same architectural family
+// as Aston Webb rather than a flat punched-window grid.
 // ---------------------------------------------------------------------------
-export function createWindowFacadeTexture(options: {
-  wallColor: string;
+export function createEdwardianFacadeTexture(options: {
+  brickColor: string;
+  trimColor: string;
   glassColor: string;
   cols?: number;
   rows?: number;
   size?: number;
 }): THREE.CanvasTexture {
-  const size = options.size ?? 512;
+  const size = options.size ?? 1024;
   const cols = options.cols ?? 6;
-  const rows = options.rows ?? 5;
+  const rows = options.rows ?? 4;
   const { canvas, ctx } = makeCanvas(size);
   const rng = mulberry32(17);
+  const brick = new THREE.Color(options.brickColor);
+  const trim = options.trimColor;
 
-  ctx.fillStyle = options.wallColor;
+  ctx.fillStyle = options.brickColor;
   ctx.fillRect(0, 0, size, size);
 
-  const cellW = size / cols;
-  const cellH = size / rows;
-  const winW = cellW * 0.62;
-  const winH = cellH * 0.68;
+  // Subtle brick coursing (fine horizontal banding, not full brick-by-brick).
+  const courseH = size / 60;
+  for (let i = 0; i < 60; i++) {
+    const shade = 0.9 + rng() * 0.2;
+    const c = brick.clone().multiplyScalar(shade);
+    ctx.fillStyle = `rgba(${c.r * 255},${c.g * 255},${c.b * 255},0.55)`;
+    ctx.fillRect(0, i * courseH, size, courseH * 0.55);
+  }
+
+  const plinthH = size * 0.07;
+  const corniceH = size * 0.1;
+
+  ctx.fillStyle = trim;
+  ctx.fillRect(0, size - plinthH, size, plinthH);
+  ctx.fillRect(0, 0, size, corniceH);
+
+  // Dentil row under the cornice.
+  const dentilCount = Math.round(cols * 4);
+  for (let i = 0; i < dentilCount; i++) {
+    ctx.fillStyle = "rgba(0,0,0,0.14)";
+    if (i % 2 === 0) ctx.fillRect((i * size) / dentilCount, corniceH * 0.6, size / dentilCount / 1.8, corniceH * 0.3);
+  }
+
+  const zoneTop = corniceH;
+  const zoneH = size - plinthH - corniceH;
+  const rowH = zoneH / rows;
+  const colW = size / cols;
+  const glass = new THREE.Color(options.glassColor);
 
   for (let r = 0; r < rows; r++) {
+    const isGround = r === rows - 1;
+    const rowTop = zoneTop + r * rowH;
     for (let c = 0; c < cols; c++) {
-      const cx = c * cellW + cellW / 2;
-      const cy = r * cellH + cellH / 2;
-      const litShift = (rng() - 0.5) * 14;
-      const glass = new THREE.Color(options.glassColor);
+      const isEntrance = isGround && Math.abs(c - (cols - 1) / 2) < 0.6;
+      const cx = c * colW + colW / 2;
+      const winW = colW * (isEntrance ? 0.58 : 0.48);
+      const winH = rowH * (isGround ? 0.8 : 0.6);
+      const winBottom = rowTop + rowH * 0.86;
+      const winTop = winBottom - winH;
+      const litShift = (rng() - 0.5) * 16;
       ctx.fillStyle = `rgb(${glass.r * 255 + litShift},${glass.g * 255 + litShift},${glass.b * 255 + litShift})`;
-      ctx.fillRect(cx - winW / 2, cy - winH / 2, winW, winH);
-      ctx.strokeStyle = "rgba(20,20,20,0.35)";
-      ctx.lineWidth = 1.5;
-      ctx.strokeRect(cx - winW / 2, cy - winH / 2, winW, winH);
+
+      if (isGround) {
+        const archR = winW / 2;
+        const straightTop = Math.max(winTop + archR, winTop + 1);
+        ctx.beginPath();
+        ctx.moveTo(cx - winW / 2, winBottom);
+        ctx.lineTo(cx - winW / 2, straightTop);
+        ctx.arc(cx, straightTop, archR, Math.PI, 0, false);
+        ctx.lineTo(cx + winW / 2, winBottom);
+        ctx.closePath();
+        ctx.fill();
+
+        ctx.strokeStyle = trim;
+        ctx.lineWidth = size * 0.007;
+        ctx.beginPath();
+        ctx.moveTo(cx - winW / 2 - 3, winBottom);
+        ctx.lineTo(cx - winW / 2 - 3, straightTop);
+        ctx.arc(cx, straightTop, archR + 3, Math.PI, 0, false);
+        ctx.lineTo(cx + winW / 2 + 3, winBottom);
+        ctx.stroke();
+
+        ctx.strokeStyle = "rgba(15,15,15,0.4)";
+        ctx.lineWidth = size * 0.0028;
+        ctx.beginPath();
+        ctx.moveTo(cx, winBottom);
+        ctx.lineTo(cx, winTop);
+        ctx.stroke();
+      } else {
+        ctx.fillRect(cx - winW / 2, winTop, winW, winH);
+        ctx.fillStyle = trim;
+        ctx.fillRect(cx - winW / 2 - 3, winTop - rowH * 0.05, winW + 6, rowH * 0.05);
+        ctx.fillRect(cx - winW / 2 - 3, winBottom, winW + 6, rowH * 0.04);
+        ctx.strokeStyle = "rgba(15,15,15,0.35)";
+        ctx.lineWidth = size * 0.0022;
+        ctx.beginPath();
+        ctx.moveTo(cx, winTop);
+        ctx.lineTo(cx, winBottom);
+        ctx.stroke();
+      }
     }
   }
 
-  softenCanvas(canvas, size / 300);
+  softenCanvas(canvas, size / 500);
   addNoise(ctx, size, 6, rng);
+  return finalize(canvas, 1, 1);
+}
+
+// ---------------------------------------------------------------------------
+// Modern curtain-wall facade — alternating glazing/spandrel bands with a
+// visible mullion grid, for the campus's concrete-and-glass buildings
+// (Muirhead Tower, Guild of Students, sport/science blocks).
+// ---------------------------------------------------------------------------
+export function createModernFacadeTexture(options: {
+  panelColor: string;
+  glassColor: string;
+  cols?: number;
+  rows?: number;
+  size?: number;
+}): THREE.CanvasTexture {
+  const size = options.size ?? 1024;
+  const cols = options.cols ?? 8;
+  const rows = options.rows ?? 10;
+  const { canvas, ctx } = makeCanvas(size);
+  const rng = mulberry32(31);
+  const panel = new THREE.Color(options.panelColor);
+  const glass = new THREE.Color(options.glassColor);
+
+  ctx.fillStyle = options.panelColor;
+  ctx.fillRect(0, 0, size, size);
+
+  const colW = size / cols;
+  const rowH = size / rows;
+
+  for (let r = 0; r < rows; r++) {
+    const isGlassBand = r % 2 === 0;
+    const y = r * rowH;
+    for (let c = 0; c < cols; c++) {
+      const x = c * colW;
+      if (isGlassBand) {
+        const litShift = (rng() - 0.5) * 18;
+        ctx.fillStyle = `rgb(${glass.r * 255 + litShift},${glass.g * 255 + litShift},${glass.b * 255 + litShift})`;
+        ctx.fillRect(x + colW * 0.05, y + rowH * 0.1, colW * 0.9, rowH * 0.8);
+      } else {
+        const shade = 0.9 + rng() * 0.18;
+        const c2 = panel.clone().multiplyScalar(shade);
+        ctx.fillStyle = `rgb(${c2.r * 255},${c2.g * 255},${c2.b * 255})`;
+        ctx.fillRect(x, y, colW, rowH);
+      }
+    }
+  }
+
+  ctx.strokeStyle = "rgba(18,22,26,0.55)";
+  ctx.lineWidth = size * 0.0028;
+  for (let c = 0; c <= cols; c++) {
+    ctx.beginPath();
+    ctx.moveTo(c * colW, 0);
+    ctx.lineTo(c * colW, size);
+    ctx.stroke();
+  }
+  for (let r = 0; r <= rows; r++) {
+    ctx.beginPath();
+    ctx.moveTo(0, r * rowH);
+    ctx.lineTo(size, r * rowH);
+    ctx.stroke();
+  }
+
+  softenCanvas(canvas, size / 600);
+  addNoise(ctx, size, 5, rng);
   return finalize(canvas, 1, 1);
 }

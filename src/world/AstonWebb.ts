@@ -20,6 +20,7 @@ import {
   createFrieze,
   createEntranceRecess,
   createStairs,
+  createColonnade,
 } from "./ArchitectureKit";
 
 /** A row of small stone piers along a rectangular roofline — cheap but
@@ -116,6 +117,19 @@ function buildCentralBlock(): THREE.Group {
   const stairs = createStairs(cb.entrance.width + 1.5, 0.45, 1.6, 3, Materials.stoneAshlar);
   stairs.position.set(0, 0, frontZ + 0.1);
   group.add(stairs);
+
+  // Grand columned portico standing proud of the entrance recess — the
+  // paired-column front the reference photos show flanking the doorway,
+  // not just a plain arched hole in the brick.
+  const colonnade = createColonnade(
+    cb.entrance.width + 2.4,
+    cb.entrance.height + 0.6,
+    0.42,
+    5,
+    Materials.stoneAshlar
+  );
+  colonnade.position.set(0, 0.45, frontZ - 1.9);
+  group.add(colonnade);
 
   // Frieze band + cornice immediately below roof level.
   const frieze = createFrieze(cb.width + 0.4, 0.9, 0.5, Materials.terracotta);

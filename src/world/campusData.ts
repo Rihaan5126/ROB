@@ -146,10 +146,10 @@ export const ASTON_WEBB = {
     depth: 26,
     wallHeight: 16,
     archWindow: {
-      width: 9,
-      height: 8,
-      sillHeight: 7.4,
-      mullions: 4,
+      width: 11,
+      height: 9,
+      sillHeight: 5.8,
+      mullions: 5,
     },
     entrance: {
       width: 7,
@@ -293,9 +293,12 @@ export const TREES = {
     { x: -14, z: 8, scale: 0.8 },
     { x: 14, z: 8, scale: 0.85 },
   ],
-  scatterCount: 26,
+  // Scatter density for the full real campus extent (not just Chancellor's
+  // Court) — the higher count and tighter spacing give the grounds real
+  // foliage coverage instead of a handful of trees dotted around.
+  scatterCount: 1100,
   scatterSeed: 42,
-  minSpacing: 9,
+  minSpacing: 7.5,
 };
 
 export const LAMP_POSTS = {

@@ -22,7 +22,8 @@ import {
   createDarkMetalTexture,
   createRoofSlateTexture,
   createBarkTexture,
-  createWindowFacadeTexture,
+  createEdwardianFacadeTexture,
+  createModernFacadeTexture,
 } from "./proceduralTextures";
 
 // Old Joe is famously deep, dense Accrington brick — near-blood-red and
@@ -48,22 +49,31 @@ const darkMetalMap = createDarkMetalTexture();
 const roofSlateMap = createRoofSlateTexture();
 const barkMap = createBarkTexture();
 
-// Simplified "rest of campus" buildings use a punched-window facade
-// texture instead of individually modelled windows — three broad
-// material languages covering academic/red-brick, modern glass-and-stone,
-// and warm accommodation brick.
-const facadeAcademicMap = createWindowFacadeTexture({ wallColor: "#8a3d2a", glassColor: "#3b4550" });
-const facadeModernMap = createWindowFacadeTexture({
-  wallColor: "#b7bcc0",
-  glassColor: "#38516b",
-  cols: 8,
-  rows: 7,
+// Simplified "rest of campus" buildings get real architectural facades —
+// not individually modelled windows, but a textured brick/stone Edwardian
+// front (matching Aston Webb's own material language, with real arched
+// ground-floor windows and a cornice/plinth) for the older academic and
+// hall buildings, and a banded glass curtain-wall texture for the
+// campus's modern concrete towers.
+const facadeAcademicMap = createEdwardianFacadeTexture({
+  brickColor: "#8a3d2a",
+  trimColor: "#ddd0b0",
+  glassColor: "#2c3946",
+  cols: 6,
+  rows: 4,
 });
-const facadeHallMap = createWindowFacadeTexture({
-  wallColor: "#9c5a3a",
-  glassColor: "#caa06a",
+const facadeModernMap = createModernFacadeTexture({
+  panelColor: "#b7bcc0",
+  glassColor: "#3a5570",
+  cols: 8,
+  rows: 9,
+});
+const facadeHallMap = createEdwardianFacadeTexture({
+  brickColor: "#9c5a3a",
+  trimColor: "#e6dcc4",
+  glassColor: "#4a3a22",
   cols: 5,
-  rows: 6,
+  rows: 5,
 });
 
 // Ground/paving get a fixed real-world-ish tiling density up front since

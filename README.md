@@ -145,8 +145,11 @@ camera-transition code needs to change either way.
   (`tiledMaterial`) so brick/stone coursing reads at a consistent scale
   regardless of how big or small a wall is. Old Joe and Aston Webb are
   built entirely from these.
-- **Instancing**: trees, lamp posts and their glow spheres are drawn with
-  `InstancedMesh` — hundreds of them cost only a handful of draw calls.
+- **Instancing**: trees, foundation-planting shrubs, lamp posts and their
+  glow spheres are drawn with `InstancedMesh` — over a thousand of them
+  scattered across the real campus extent cost only a handful of draw
+  calls. Trees avoid every building footprint and path; shrubs form a
+  planting ring around all 60 buildings.
 - **Textures** are all generated at runtime with `CanvasTexture` — no
   downloaded or scraped imagery, so there are no licensing concerns.
 
@@ -171,9 +174,11 @@ camera-transition code needs to change either way.
 ## What's deliberately not here yet
 
 - Building interiors (everything is an exterior shell).
-- Real architectural detail on the 58 OSM-derived buildings — only Old Joe
-  and Aston Webb get bespoke facades; the rest use the real footprint with
-  a generic facade texture.
+- Bespoke individual facades on the 58 OSM-derived buildings — they use the
+  real footprint, a stone plinth and cornice, and one of two detailed
+  Edwardian/modern facade textures (arched ground-floor windows, banded
+  coursing) by category/height, not a one-off model per building the way
+  Old Joe and Aston Webb are.
 - A dedicated detail viewer for those 58 buildings — only Old Joe and
   Aston Webb have "Explore in 3D" today.
 - Search, wayfinding/routing, opening hours, accessibility info.

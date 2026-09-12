@@ -336,7 +336,10 @@ export function createCornice(
   return mesh;
 }
 
-/** Decorative frieze band with a row of subtle dentil blocks. */
+/** Decorative frieze band with a row of subtle dentil blocks, plus a set
+ * of raised relief panels suggesting carved figure roundels — the way the
+ * Great Hall's actual frieze reads as figurative sculpture from a
+ * distance, not a plain moulding. */
 export function createFrieze(
   width: number,
   height: number,
@@ -358,6 +361,26 @@ export function createFrieze(
     const dentil = new THREE.Mesh(dentilGeo, dentilMat);
     dentil.position.set(t * width, height * 0.1, depth / 2 + 0.08);
     group.add(dentil);
+  }
+
+  // Raised relief roundels — evenly spaced shallow discs standing slightly
+  // proud of the band, breaking the frieze into figurative "panels" the
+  // way the real sculpted frieze reads at a glance without modelling
+  // literal figures.
+  const roundelCount = Math.max(3, Math.round(width / 3.5));
+  const roundelGeo = new THREE.CylinderGeometry(height * 0.32, height * 0.32, 0.1, 20);
+  roundelGeo.rotateX(Math.PI / 2);
+  const roundelMat = Materials.stoneDarleyDale;
+  for (let i = 0; i < roundelCount; i++) {
+    const t = (i + 0.5) / roundelCount - 0.5;
+    const roundel = new THREE.Mesh(roundelGeo, roundelMat);
+    roundel.position.set(t * width, height * 0.55, depth / 2 + 0.1);
+    roundel.castShadow = true;
+    group.add(roundel);
+
+    const boss = new THREE.Mesh(new THREE.SphereGeometry(height * 0.13, 12, 10), roundelMat);
+    boss.position.set(t * width, height * 0.55, depth / 2 + 0.22);
+    group.add(boss);
   }
 
   return group;
@@ -383,6 +406,66 @@ export function createStairs(
     mesh.receiveShadow = true;
     mesh.castShadow = true;
     group.add(mesh);
+  }
+  return group;
+}
+
+/** A classical column — square plinth, round tapered shaft, disc capital —
+ * for grand columned entrances (Aston Webb's front steps). Origin at
+ * base-centre. */
+export function createColumn(
+  height: number,
+  radius: number,
+  material: THREE.Material = Materials.stoneAshlar
+): THREE.Group {
+  const group = new THREE.Group();
+
+  const plinthH = Math.min(0.4, height * 0.08);
+  const plinth = new THREE.Mesh(new THREE.BoxGeometry(radius * 2.6, plinthH, radius * 2.6), material);
+  plinth.position.y = plinthH / 2;
+  plinth.castShadow = true;
+  plinth.receiveShadow = true;
+  group.add(plinth);
+
+  const shaftH = height - plinthH * 2;
+  const shaftGeo = new THREE.CylinderGeometry(radius * 0.9, radius, shaftH, 16, 1);
+  const shaft = new THREE.Mesh(shaftGeo, material);
+  shaft.position.y = plinthH + shaftH / 2;
+  shaft.castShadow = true;
+  shaft.receiveShadow = true;
+  group.add(shaft);
+
+  const capitalGeo = new THREE.CylinderGeometry(radius * 1.35, radius * 0.95, plinthH * 1.4, 16);
+  const capital = new THREE.Mesh(capitalGeo, material);
+  capital.position.y = plinthH + shaftH + (plinthH * 1.4) / 2;
+  capital.castShadow = true;
+  group.add(capital);
+
+  const abacusGeo = new THREE.BoxGeometry(radius * 2.8, plinthH * 0.8, radius * 2.8);
+  const abacus = new THREE.Mesh(abacusGeo, material);
+  abacus.position.y = plinthH + shaftH + plinthH * 1.4 + (plinthH * 0.8) / 2;
+  abacus.castShadow = true;
+  group.add(abacus);
+
+  return group;
+}
+
+/** A row of evenly-spaced columns spanning `width`, for a colonnade/portico
+ * front. Origin at base-centre, columns run along local X. */
+export function createColonnade(
+  width: number,
+  height: number,
+  radius: number,
+  count: number,
+  material: THREE.Material = Materials.stoneAshlar
+): THREE.Group {
+  const group = new THREE.Group();
+  for (let i = 0; i < count; i++) {
+    const t = count === 1 ? 0.5 : i / (count - 1);
+    const x = -width / 2 + t * width;
+    const col = createColumn(height, radius, material);
+    col.position.x = x;
+    group.add(col);
   }
   return group;
 }

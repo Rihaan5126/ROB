@@ -39,6 +39,20 @@ function footprintShape(footprint: [number, number][]): THREE.Shape {
   return shape;
 }
 
+/** The footprint scaled about its own centroid — used for a solid plinth
+ * slab that stands slightly proud of the facade above it. */
+function scaledShape(footprint: [number, number][], scale: number): THREE.Shape {
+  const shape = new THREE.Shape();
+  footprint.forEach(([x, z], i) => {
+    const sx = x * scale;
+    const sz = -z * scale;
+    if (i === 0) shape.moveTo(sx, sz);
+    else shape.lineTo(sx, sz);
+  });
+  shape.closePath();
+  return shape;
+}
+
 /** A thin hollow border ring around a footprint — the outer boundary
  * scaled out, the same footprint scaled in as a hole, so extruding it
  * yields a genuine thin trim instead of a solid duplicate slab. */
@@ -110,6 +124,21 @@ export function createRealBuilding(spec: RealBuildingSpec): THREE.Group {
   cornice.position.y = spec.height - 0.02;
   cornice.castShadow = false;
   group.add(cornice);
+
+  // A projecting stone plinth at ground level — the base course real
+  // institutional buildings almost always have, standing slightly proud
+  // of the brick/facade above it.
+  const plinthHeight = Math.min(1.3, spec.height * 0.12);
+  const plinthShape = scaledShape(spec.footprint, 1.035);
+  const plinthGeo = new THREE.ExtrudeGeometry(plinthShape, {
+    depth: plinthHeight,
+    bevelEnabled: false,
+    curveSegments: 1,
+  });
+  plinthGeo.rotateX(-Math.PI / 2);
+  const plinth = new THREE.Mesh(plinthGeo, [Materials.stoneAshlar, Materials.stoneAshlar]);
+  plinth.castShadow = false;
+  group.add(plinth);
 
   // Paved apron sized to the footprint's real extent.
   let maxR = 6;

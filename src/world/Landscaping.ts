@@ -1,14 +1,18 @@
 // ============================================================================
 // Landscaping.ts
 //
-// Procedural trees, lamp posts and shrubs. Trees and lamps are drawn with
-// InstancedMesh so hundreds can exist for near-zero extra draw calls.
+// Procedural trees, lamp posts and shrubs — scattered across the whole
+// real campus extent (not just Chancellor's Court), with foundation
+// planting (a shrub border) around every one of the 60 registered
+// buildings. Trees/shrubs/lamps are all drawn with InstancedMesh so
+// hundreds of them cost only a handful of draw calls.
 // ============================================================================
 
 import * as THREE from "three";
 import { mergeGeometries } from "three/addons/utils/BufferGeometryUtils.js";
 import { Materials } from "../materials/materials";
-import { TREES, LAMP_POSTS, PATHS, OLD_JOE, ASTON_WEBB, PAVING, type PathSegment } from "./campusData";
+import { TREES, LAMP_POSTS, PATHS, type PathSegment } from "./campusData";
+import { BUILDINGS } from "./buildings";
 
 function mulberry32(seed: number) {
   let a = seed;
@@ -84,6 +88,15 @@ function buildCanopyGeometry(): THREE.BufferGeometry {
   return geo;
 }
 
+/** A rounded, slightly flattened shrub blob — smaller/denser than the
+ * tree canopy so it reads as clipped foundation planting, not a sapling. */
+function buildShrubGeometry(): THREE.BufferGeometry {
+  const geo = new THREE.IcosahedronGeometry(0.65, 1);
+  geo.scale(1, 0.75, 1);
+  geo.translate(0, 0.5, 0);
+  return geo;
+}
+
 function distancePointToSegment(
   px: number,
   pz: number,
@@ -115,12 +128,10 @@ function distanceToPath(px: number, pz: number, path: PathSegment): number {
 }
 
 function isClearOfObstacles(x: number, z: number, minPathClearance: number): boolean {
-  const distOldJoe = Math.hypot(x - OLD_JOE.position.x, z - OLD_JOE.position.z);
-  if (distOldJoe < PAVING.oldJoeRadius + 4) return false;
-
-  const distAstonWebb = Math.hypot(x - ASTON_WEBB.position.x, z - ASTON_WEBB.position.z);
-  if (distAstonWebb < 28) return false;
-
+  for (const b of BUILDINGS) {
+    const dist = Math.hypot(x - b.groundPosition.x, z - b.groundPosition.z);
+    if (dist < b.footprintRadius + 3) return false;
+  }
   for (const path of PATHS) {
     if (distanceToPath(x, z, path) < minPathClearance) return false;
   }
@@ -135,17 +146,29 @@ export interface LandscapingResult {
 export function buildLandscaping(heightAt: (x: number, z: number) => number): LandscapingResult {
   const group = new THREE.Group();
 
-  // ---- Trees --------------------------------------------------------
+  // ---- Trees, scattered across the whole real campus extent ------------
   const rng = mulberry32(TREES.scatterSeed);
   const placements: { x: number; z: number; scale: number }[] = [
     ...TREES.specimen.map((t) => ({ x: t.x, z: t.z, scale: t.scale })),
   ];
 
+  let minX = -80;
+  let maxX = 80;
+  let minZ = -20;
+  let maxZ = 120;
+  for (const b of BUILDINGS) {
+    minX = Math.min(minX, b.groundPosition.x - 40);
+    maxX = Math.max(maxX, b.groundPosition.x + 40);
+    minZ = Math.min(minZ, b.groundPosition.z - 40);
+    maxZ = Math.max(maxZ, b.groundPosition.z + 40);
+  }
+
   let attempts = 0;
-  while (placements.length < TREES.specimen.length + TREES.scatterCount && attempts < 2000) {
+  const targetCount = TREES.specimen.length + TREES.scatterCount;
+  while (placements.length < targetCount && attempts < targetCount * 60) {
     attempts++;
-    const x = -55 + rng() * 110;
-    const z = 10 + rng() * 90;
+    const x = minX + rng() * (maxX - minX);
+    const z = minZ + rng() * (maxZ - minZ);
     if (!isClearOfObstacles(x, z, 4.5)) continue;
     let tooClose = false;
     for (const p of placements) {
@@ -275,23 +298,32 @@ export function buildLandscaping(heightAt: (x: number, z: number) => number): La
 
   group.add(poleMesh, armMesh, glowMesh);
 
-  // ---- A handful of shrubs flanking the two landmark entrances ---------
-  const shrubGeo = new THREE.IcosahedronGeometry(0.6, 1);
-  const shrubPositions = [
-    { x: OLD_JOE.baseStage.width / 2 + 1.2, z: OLD_JOE.baseStage.width / 2 + 1.2 },
-    { x: -(OLD_JOE.baseStage.width / 2 + 1.2), z: OLD_JOE.baseStage.width / 2 + 1.2 },
-    { x: ASTON_WEBB.position.x + ASTON_WEBB.centralBlock.width / 2 + 2, z: ASTON_WEBB.position.z - 6 },
-    { x: ASTON_WEBB.position.x - ASTON_WEBB.centralBlock.width / 2 - 2, z: ASTON_WEBB.position.z - 6 },
-  ];
-  const shrubMesh = new THREE.InstancedMesh(shrubGeo, Materials.shrub, shrubPositions.length);
-  shrubMesh.castShadow = true;
-  shrubMesh.receiveShadow = true;
-  for (let i = 0; i < shrubPositions.length; i++) {
-    const s = shrubPositions[i];
-    const y = heightAt(s.x, s.z);
-    dummy.position.set(s.x, y + 0.4, s.z);
-    dummy.rotation.set(0, 0, 0);
-    dummy.scale.setScalar(1);
+  // ---- Foundation planting: a shrub border around every building -------
+  const shrubRng = mulberry32(71);
+  const shrubGeo = buildShrubGeometry();
+  const shrubPlacements: { x: number; y: number; z: number; scale: number }[] = [];
+
+  for (const b of BUILDINGS) {
+    const ringR = b.footprintRadius + 1.8;
+    const count = Math.max(5, Math.min(20, Math.round(b.footprintRadius * 0.9)));
+    for (let i = 0; i < count; i++) {
+      const t = (i + shrubRng() * 0.4) / count;
+      const angle = t * Math.PI * 2;
+      const jitter = 0.5 + shrubRng() * 0.6;
+      const x = b.groundPosition.x + Math.cos(angle) * (ringR + jitter);
+      const z = b.groundPosition.z + Math.sin(angle) * (ringR + jitter);
+      shrubPlacements.push({ x, y: heightAt(x, z), z, scale: 0.75 + shrubRng() * 0.6 });
+    }
+  }
+
+  const shrubMesh = new THREE.InstancedMesh(shrubGeo, Materials.shrub, shrubPlacements.length);
+  shrubMesh.castShadow = false;
+  shrubMesh.receiveShadow = false;
+  for (let i = 0; i < shrubPlacements.length; i++) {
+    const s = shrubPlacements[i];
+    dummy.position.set(s.x, s.y, s.z);
+    dummy.rotation.set(0, shrubRng() * Math.PI * 2, 0);
+    dummy.scale.setScalar(s.scale);
     dummy.updateMatrix();
     shrubMesh.setMatrixAt(i, dummy.matrix);
   }
